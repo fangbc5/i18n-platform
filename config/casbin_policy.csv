@@ -1,0 +1,6 @@
+p, admin, /api/*, *
+p, user, /api/projects/*, GET
+p, user, /api/phrases/*, GET
+p, user, /api/terms/*, GET
+p, user, /api/translations/*, GET
+g, admin, user 
