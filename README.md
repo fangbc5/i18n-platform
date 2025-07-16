@@ -1,6 +1,6 @@
 # 国际化管理平台
 
-基于Rust + Axum构建的企业级国际化管理平台，提供多端词条统一管理、翻译工作流自动化、实时多语言分发等功能。
+基于Rust + Actix-web构建的企业级国际化管理平台，提供多端词条统一管理、翻译工作流自动化、实时多语言分发等功能。
 
 ## 功能特点
 
@@ -20,9 +20,8 @@
 
 | 模块 | 技术方案 | 说明 |
 |------|----------|------|
-| 框架 | Rust + Axum | 高性能异步Web框架 |
-| ORM | Diesel | Rust生态最流行的ORM框架 |
-| 数据库 | MySQL 8.0 | 支持JSON、窗口函数 |
+| 框架 | Rust + Actix-web | 成熟稳定的高性能异步Web框架 |
+| 数据库 | SQLx + MySQL 8.0 | 类型安全的异步SQL框架，支持JSON、窗口函数 |
 | 缓存 | Redis | 高频词条缓存，发布队列 |
 | 存储 | MinIO | 兼容S3的对象存储 |
 | 消息队列 | Kafka | 分布式翻译任务处理 |
@@ -57,9 +56,10 @@ cp .env.example .env
 
 3. 数据库初始化
 ```bash
-cargo install diesel_cli
-diesel setup
-diesel migration run
+# 使用sqlx-cli进行数据库管理
+cargo install sqlx-cli
+sqlx database create
+sqlx migrate run
 ```
 
 4. 运行服务

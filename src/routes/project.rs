@@ -1,83 +1,64 @@
-use crate::{errors::AppError, services::ProjectService};
-use axum::{
-    extract::State,
-    routing::{get, post},
-    Json, Router,
+use crate::{
+    dtos::project::{CreateProjectDto, UpdateProjectDto},
+    errors::AppError,
+    middleware::auth::Authentication,
+    services::{project_service::ProjectService, BaseService},
 };
-use serde::{Deserialize, Serialize};
+use actix_web::{delete, get, post, put, web, HttpResponse};
 
-#[derive(Debug, Deserialize)]
-pub struct CreateProjectRequest {
-    pub name: String,
-    pub description: Option<String>,
-    pub source_language: String,
-    pub target_languages: Vec<String>,
+pub fn project_routes(cfg: &mut web::ServiceConfig) {
+    cfg.service(
+        web::scope("")
+            .wrap(Authentication::default())
+            .service(create_project)
+            .service(get_projects)
+            .service(get_project)
+            .service(update_project)
+            .service(delete_project),
+    );
 }
 
-#[derive(Serialize)]
-pub struct ProjectResponse {
-    pub id: i32,
-    pub name: String,
-    pub description: Option<String>,
-    pub owner_id: i32,
-}
-
-pub fn project_routes() -> Router {
-    Router::new()
-        .route("/", post(create_project))
-        .route("/:id", get(get_project))
-        .route("/user/:id", get(get_user_projects))
-}
-
+#[post("")]
 async fn create_project(
-    State(project_service): State<ProjectService>,
-    Path(user_id): Path<String>,
-    Json(req): Json<CreateProjectRequest>,
-) -> Result<Json<ProjectResponse>, AppError> {
-    let project = project_service
-        .create_project(
-            &req.name,
-            req.description.as_deref(),
-            &req.source_language,
-            &req.target_languages,
-            &user_id,
-        )
-        .await?;
-    Ok(Json(ProjectResponse {
-        id: project.id,
-        name: project.name,
-        description: project.description,
-        owner_id: project.owner_id,
-    }))
+    project_service: web::Data<ProjectService>,
+    project: web::Json<CreateProjectDto>,
+) -> Result<HttpResponse, AppError> {
+    let project = project_service.insert(&project.into_inner()).await?;
+    Ok(HttpResponse::Created().json(project))
 }
 
+#[get("")]
+async fn get_projects(
+    project_service: web::Data<ProjectService>,
+) -> Result<HttpResponse, AppError> {
+    let projects = project_service.select_all().await?;
+    Ok(HttpResponse::Ok().json(projects))
+}
+
+#[get("/{id}")]
 async fn get_project(
-    State(project_service): State<ProjectService>,
-    Path(id): Path<String>,
-) -> Result<Json<ProjectResponse>, AppError> {
-    let project = project_service.get_project(&id).await?;
-    Ok(Json(ProjectResponse {
-        id: project.id,
-        name: project.name,
-        description: project.description,
-        owner_id: project.owner_id,
-    }))
+    project_service: web::Data<ProjectService>,
+    id: web::Path<u64>,
+) -> Result<HttpResponse, AppError> {
+    let project = project_service.select_by_id(id.into_inner()).await?;
+    Ok(HttpResponse::Ok().json(project))
 }
 
-async fn get_user_projects(
-    State(project_service): State<ProjectService>,
-    Path(user_id): Path<String>,
-) -> Result<Json<Vec<ProjectResponse>>, AppError> {
-    let projects = project_service.get_user_projects(&user_id).await?;
-    Ok(Json(
-        projects
-            .into_iter()
-            .map(|p| ProjectResponse {
-                id: p.id,
-                name: p.name,
-                description: p.description,
-                owner_id: p.owner_id,
-            })
-            .collect::<Vec<_>>(),
-    ))
+#[put("/{id}")]
+async fn update_project(
+    project_service: web::Data<ProjectService>,
+    id: web::Path<u64>,
+    project: web::Json<UpdateProjectDto>,
+) -> Result<HttpResponse, AppError> {
+    let project = project_service.update_by_id(id.into_inner(), &project.into_inner()).await?;
+    Ok(HttpResponse::Ok().json(project))
+}
+
+#[delete("/{id}")]
+async fn delete_project(
+    project_service: web::Data<ProjectService>,
+    id: web::Path<u64>,
+) -> Result<HttpResponse, AppError> {
+    project_service.delete_by_id(id.into_inner()).await?;
+    Ok(HttpResponse::NoContent().finish())
 }

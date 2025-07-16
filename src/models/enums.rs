@@ -1,11 +1,11 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(type_name = "ENUM", rename_all = "lowercase")]
 pub enum TranslationStatus {
-    Draft,
-    InReview,
-    Approved,
-    Rejected,
+    Pending,
+    Reviewed,
+    Published,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
@@ -19,10 +19,9 @@ pub enum UserRole {
 impl ToString for TranslationStatus {
     fn to_string(&self) -> String {
         match self {
-            TranslationStatus::Draft => "draft".to_string(),
-            TranslationStatus::InReview => "in_review".to_string(),
-            TranslationStatus::Approved => "approved".to_string(),
-            TranslationStatus::Rejected => "rejected".to_string(),
+            TranslationStatus::Pending => "pending".to_string(),
+            TranslationStatus::Reviewed => "reviewed".to_string(),
+            TranslationStatus::Published => "published".to_string(),
         }
     }
 }

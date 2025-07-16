@@ -1,72 +1,62 @@
-use diesel::prelude::*;
-use diesel::result::Error;
-use diesel::MysqlConnection;
-use uuid::Uuid;
+use std::sync::Arc;
 
-use crate::models::{CreateModule, Module, UpdateModule};
-use crate::schema::i18n_modules;
+use async_trait::async_trait;
+use sqlx::MySqlPool;
 
-pub struct ModuleRepository;
+use crate::{errors::AppError, models::module::Module};
+
+use super::BaseRepository;
+
+pub struct ModuleRepository {
+    pool: Arc<MySqlPool>,
+}
 
 impl ModuleRepository {
-    pub fn find_all(conn: &mut MysqlConnection) -> Result<Vec<Module>, Error> {
-        i18n_modules::table.load::<Module>(conn)
+    pub fn new(pool: Arc<MySqlPool>) -> Self {
+        Self { pool }
     }
 
-    pub fn find_by_project(
-        conn: &mut MysqlConnection,
-        project_id: &str,
-    ) -> Result<Vec<Module>, Error> {
-        i18n_modules::table
-            .filter(i18n_modules::project_id.eq(project_id))
-            .load::<Module>(conn)
+    /// 根据项目ID查找模块列表
+    pub async fn find_by_project_id(&self, project_id: u64) -> Result<Vec<Module>, AppError> {
+        sqlx::query_as::<_, Module>(&format!(
+            r#"
+            SELECT * FROM {} WHERE project_id = ?
+            "#,
+            self.get_table_name()
+        ))
+        .bind(project_id)
+        .fetch_all(self.get_pool())
+        .await
+        .map_err(AppError::from)
     }
 
-    pub fn find_by_id(conn: &mut MysqlConnection, id: &str) -> Result<Option<Module>, Error> {
-        i18n_modules::table.find(id).first(conn).optional()
+    /// 根据项目ID和模块代码查找模块
+    pub async fn find_by_project_and_code(
+        &self,
+        project_id: u64,
+        code: &str,
+    ) -> Result<Option<Module>, AppError> {
+        sqlx::query_as::<_, Module>(&format!(
+            r#"
+            SELECT * FROM {} WHERE project_id = ? AND code = ?
+            "#,
+            self.get_table_name()
+        ))
+        .bind(project_id)
+        .bind(code)
+        .fetch_optional(self.get_pool())
+        .await
+        .map_err(AppError::from)
+    }
+}
+
+#[async_trait]
+impl BaseRepository<Module> for ModuleRepository {
+    fn get_table_name(&self) -> &str {
+        "i18n_modules"
     }
 
-    pub fn create(
-        conn: &mut MysqlConnection,
-        new_module: &CreateModule,
-        user_id: &str,
-    ) -> Result<Module, Error> {
-        let module = Module {
-            id: Uuid::new_v4().to_string(),
-            project_id: new_module.project_id.clone(),
-            name: new_module.name.clone(),
-            description: new_module.description.clone(),
-            path: new_module.path.clone(),
-            crt_by: user_id.to_string(),
-            crt_at: chrono::Local::now().naive_local(),
-            upt_by: None,
-            upt_at: chrono::Local::now().naive_local(),
-        };
-
-        diesel::insert_into(i18n_modules::table)
-            .values(&module)
-            .execute(conn)?;
-
-        Ok(module)
-    }
-
-    pub fn update(
-        conn: &mut MysqlConnection,
-        id: &str,
-        module: &UpdateModule,
-        user_id: &str,
-    ) -> Result<Module, Error> {
-        diesel::update(i18n_modules::table.find(id))
-            .set((
-                module,
-                i18n_modules::upt_by.eq(Some(user_id.to_string())),
-                i18n_modules::upt_at.eq(chrono::Local::now().naive_local()),
-            ))
-            .get_result(conn)
-    }
-
-    pub fn delete(conn: &mut MysqlConnection, id: &str) -> Result<bool, Error> {
-        let count = diesel::delete(i18n_modules::table.find(id)).execute(conn)?;
-        Ok(count > 0)
+    fn get_pool(&self) -> &MySqlPool {
+        &self.pool
     }
 }

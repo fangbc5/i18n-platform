@@ -1,15 +1,14 @@
-use chrono::NaiveDateTime;
-use diesel::prelude::*;
+use chrono::{Local, NaiveDateTime};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sqlx::FromRow;
 
-use crate::schema::i18n_terms;
+use crate::dtos::term::{CreateTermDto, UpdateTermDto};
 
-#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Insertable)]
-#[diesel(table_name = i18n_terms)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Term {
-    pub id: String,
-    pub project_id: String,
+    pub id: u64,
+    pub project_id: u64,
     pub source_term: String,
     pub target_term: String,
     pub language: String,
@@ -21,22 +20,38 @@ pub struct Term {
     pub upt_at: NaiveDateTime,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct CreateTerm {
-    pub project_id: String,
-    pub source_term: String,
-    pub target_term: String,
-    pub language: String,
-    pub description: Option<String>,
-    pub platforms: Value,
+impl From<&CreateTermDto> for Term {
+    fn from(dto: &CreateTermDto) -> Self {
+        Term {
+            id: 0,
+            project_id: dto.project_id,
+            source_term: dto.source_term.clone(),
+            target_term: dto.target_term.clone(),
+            language: dto.language_code.clone(),
+            description: dto.description.clone(),
+            platforms: Value::Null,
+            crt_by: "".to_string(),
+            crt_at: Local::now().naive_local(),
+            upt_by: None,
+            upt_at: Local::now().naive_local(),
+        }
+    }
 }
 
-#[derive(Debug, AsChangeset, Deserialize)]
-#[diesel(table_name = i18n_terms)]
-pub struct UpdateTerm {
-    pub source_term: Option<String>,
-    pub target_term: Option<String>,
-    pub language: Option<String>,
-    pub description: Option<String>,
-    pub platforms: Option<Value>,
+impl From<&UpdateTermDto> for Term {
+    fn from(dto: &UpdateTermDto) -> Self {
+        Term {
+            id: 0,
+            project_id: 0,
+            source_term: dto.source_term.clone().unwrap_or_default(),
+            target_term: dto.target_term.clone().unwrap_or_default(),
+            language: "".to_string(),
+            description: dto.description.clone(),
+            platforms: Value::Null,
+            crt_by: "".to_string(),
+            crt_at: Local::now().naive_local(),
+            upt_by: None,
+            upt_at: Local::now().naive_local(),
+        }
+    }
 }

@@ -9,19 +9,12 @@ mod term;
 mod translation;
 mod user;
 
-use crate::repositories::DbPool;
-use axum::Router;
-
-pub fn api_routes() -> Router<DbPool> {
-    Router::new()
-        .merge(auth::auth_routes())
-        .merge(language::language_routes())
-        .merge(module::module_routes())
-        .merge(phrase::phrase_routes())
-        .merge(phrase_type::phrase_type_routes())
-        .merge(project::project_routes())
-        .merge(screenshot::screenshot_routes())
-        .merge(term::term_routes())
-        .merge(translation::translation_routes())
-        .merge(user::user_routes())
-}
+pub use auth::auth_routes;
+pub use language::language_routes;
+pub use module::module_routes;
+pub use phrase::phrase_routes;
+pub use project::project_routes;
+pub use screenshot::screenshot_routes;
+pub use term::term_routes;
+pub use translation::translation_routes;
+pub use user::user_routes;

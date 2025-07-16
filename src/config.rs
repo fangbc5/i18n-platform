@@ -10,8 +10,10 @@ pub struct Database {
 
 #[derive(Debug, Deserialize)]
 pub struct Redis {
-    pub url: String,
-    pub pool_size: u32,
+    pub host: String,
+    pub port: u16,
+    pub password: Option<String>,
+    pub database: Option<u8>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -20,6 +22,12 @@ pub struct Minio {
     pub access_key: String,
     pub secret_key: String,
     pub bucket: String,
+    #[serde(default = "default_region")]
+    pub region: String,
+}
+
+fn default_region() -> String {
+    "us-east-1".to_string()
 }
 
 #[derive(Debug, Deserialize)]
@@ -65,14 +73,22 @@ impl Settings {
                 pool_size: env::var("DATABASE_POOL_SIZE")?.parse().unwrap_or(10),
             },
             redis: Redis {
-                url: env::var("REDIS_URL")?,
-                pool_size: env::var("REDIS_POOL_SIZE")?.parse().unwrap_or(10),
+                host: env::var("REDIS_HOST").unwrap_or("localhost".to_string()),
+                port: env::var("REDIS_PORT")
+                    .unwrap_or("6379".to_string())
+                    .parse()
+                    .unwrap_or(6379),
+                password: env::var("REDIS_PASSWORD").ok(),
+                database: env::var("REDIS_DATABASE")
+                    .ok()
+                    .map(|s| s.parse().unwrap_or(0)),
             },
             minio: Minio {
                 endpoint: env::var("MINIO_ENDPOINT")?,
                 access_key: env::var("MINIO_ACCESS_KEY")?,
                 secret_key: env::var("MINIO_SECRET_KEY")?,
                 bucket: env::var("MINIO_BUCKET")?,
+                region: env::var("MINIO_REGION").unwrap_or(default_region()),
             },
             kafka: Kafka {
                 brokers: env::var("KAFKA_BROKERS")?,

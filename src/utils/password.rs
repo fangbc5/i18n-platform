@@ -2,11 +2,11 @@ use crate::errors::AppError;
 use bcrypt::{hash, verify, DEFAULT_COST};
 
 pub fn hash_password(password: &str) -> Result<String, AppError> {
-    hash(password, DEFAULT_COST).map_err(|e| AppError::Internal(format!("密码加密失败: {}", e)))
+    hash(password, DEFAULT_COST).map_err(|e| AppError::Internal(e.to_string()))
 }
 
 pub fn verify_password(password: &str, hash: &str) -> Result<bool, AppError> {
-    verify(password, hash).map_err(|e| AppError::Internal(format!("密码验证失败: {}", e)))
+    verify(password, hash).map_err(|e| AppError::Internal(e.to_string()))
 }
 
 #[cfg(test)]

@@ -1,74 +1,99 @@
-use crate::{
-    errors::AppError,
-    utils::jwt::{decode_token, Claims},
-    AppState,
+use actix_web::{
+    dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
+    Error, HttpMessage,
 };
-use axum::{
-    body::Body,
-    extract::State,
-    http::{Request, StatusCode},
-    middleware::Next,
-    response::Response,
-};
-use casbin::{CoreApi, RbacApi};
-use redis::Commands;
-use std::sync::Arc;
+use futures::future::LocalBoxFuture;
+use jsonwebtoken::{decode, DecodingKey, Validation};
+use std::future::{ready, Ready};
 
-// 不需要认证的路径
-const PUBLIC_PATHS: [&str; 3] = ["/api/auth/login", "/api/auth/register", "/health"];
+use crate::errors::AppError;
+use crate::utils::jwt::Claims;
 
-pub async fn auth_middleware(
-    State(state): State<Arc<AppState>>,
-    mut req: Request<Body>,
-    next: Next,
-) -> Result<Response, AppError> {
-    // 跳过不需要认证的路径
-    let path = req.uri().path();
-    if path == "/health" || path.starts_with("/api/auth") {
-        return Ok(next.run(req).await);
+pub struct Authentication;
+
+impl Default for Authentication {
+    fn default() -> Self {
+        Self
     }
-
-    // 获取并验证Token
-    let token = req
-        .headers()
-        .get("Authorization")
-        .and_then(|auth| auth.to_str().ok())
-        .and_then(|auth| auth.strip_prefix("Bearer "))
-        .ok_or(AppError::Unauthorized("Missing token".into()))?;
-
-    let claims = decode_token(token)?;
-
-    // 检查Token是否被加入黑名单
-    let redis_key = format!("blacklist:{}", token);
-    let is_blacklisted: bool = state
-        .redis
-        .get_connection()
-        .map_err(AppError::Cache)?
-        .exists(&redis_key)
-        .map_err(AppError::Cache)?;
-
-    if is_blacklisted {
-        return Err(AppError::Unauthorized("Token is blacklisted".into()));
-    }
-
-    // 检查权限
-    let can_access = state
-        .casbin
-        .enforce(&[&claims.sub, path, req.method().as_str()])
-        .map_err(|e| AppError::Authorization(e.to_string()))?;
-
-    if !can_access {
-        return Err(AppError::Forbidden("Access denied".into()));
-    }
-
-    // 将用户信息添加到请求中
-    req.extensions_mut().insert(claims);
-
-    Ok(next.run(req).await)
 }
 
-// 用于测试的跳过认证中间件
-#[cfg(test)]
-pub async fn skip_auth<B>(req: Request<B>, next: Next<B>) -> Result<Response, StatusCode> {
-    Ok(next.run(req).await)
+impl<S, B> Transform<S, ServiceRequest> for Authentication
+where
+    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
+    S::Future: 'static,
+    B: 'static,
+{
+    type Response = ServiceResponse<B>;
+    type Error = Error;
+    type InitError = ();
+    type Transform = AuthenticationMiddleware<S>;
+    type Future = Ready<Result<Self::Transform, Self::InitError>>;
+
+    fn new_transform(&self, service: S) -> Self::Future {
+        ready(Ok(AuthenticationMiddleware { service }))
+    }
+}
+
+pub struct AuthenticationMiddleware<S> {
+    service: S,
+}
+
+impl<S, B> Service<ServiceRequest> for AuthenticationMiddleware<S>
+where
+    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
+    S::Future: 'static,
+    B: 'static,
+{
+    type Response = ServiceResponse<B>;
+    type Error = Error;
+    type Future = LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
+
+    forward_ready!(service);
+
+    fn call(&self, req: ServiceRequest) -> Self::Future {
+        let token = match req.headers().get("Authorization") {
+            Some(auth_header) => {
+                let auth_str = auth_header
+                    .to_str()
+                    .map_err(|_| AppError::Unauthorized("Invalid Authorization header".into()));
+
+                match auth_str {
+                    Ok(str) => {
+                        if !str.starts_with("Bearer ") {
+                            return Box::pin(ready(Err(AppError::Unauthorized(
+                                "Invalid Authorization header format".into(),
+                            )
+                            .into())));
+                        }
+                        str[7..].to_string()
+                    }
+                    Err(e) => return Box::pin(ready(Err(e.into()))),
+                }
+            }
+            None => {
+                return Box::pin(ready(Err(AppError::Unauthorized(
+                    "Missing Authorization header".into(),
+                )
+                .into())))
+            }
+        };
+
+        let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "your-secret-key".to_string());
+        let claims = match decode::<Claims>(
+            &token,
+            &DecodingKey::from_secret(secret.as_bytes()),
+            &Validation::default(),
+        ) {
+            Ok(token_data) => token_data.claims,
+            Err(e) => return Box::pin(ready(Err(AppError::Unauthorized(e.to_string()).into()))),
+        };
+
+        req.extensions_mut().insert(claims);
+
+        let fut = self.service.call(req);
+        Box::pin(async move {
+            let res = fut.await?;
+            Ok(res)
+        })
+    }
 }

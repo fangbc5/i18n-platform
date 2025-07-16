@@ -1,41 +1,40 @@
-use crate::{errors::AppError, models::Project, repositories::ProjectRepository};
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use sqlx::MySqlPool;
+
+use crate::{
+    dtos::project::{CreateProjectDto, ProjectVo, UpdateProjectDto},
+    errors::AppError,
+    models::project::Project,
+    repositories::{base_repo::BaseRepository, project_repo::ProjectRepository}, services::BaseService,
+};
 
 pub struct ProjectService {
-    repo: ProjectRepository,
+    repo: Arc<ProjectRepository>,
 }
 
 impl ProjectService {
-    pub fn new(repo: ProjectRepository) -> Self {
-        Self { repo }
+    pub fn new(pool: Arc<MySqlPool>) -> Self {
+        Self {
+            repo: Arc::new(ProjectRepository::new(pool)),
+        }
     }
 
-    pub async fn create_project(
-        &mut self,
-        name: &str,
-        description: Option<&str>,
-        source_language: &str,
-        target_languages: Vec<&str>,
-        owner_id: &str,
-    ) -> Result<Project, AppError> {
-        let project = Project {
-            id: uuid::Uuid::new_v4().to_string(),
-            name: name.to_string(),
-            description: description.map(|s| s.to_string()),
-            source_language: source_language.to_string(),
-            target_languages: serde_json::to_string(&target_languages)?,
-            owner_id: owner_id.to_string(),
-            created_at: chrono::Local::now().naive_local(),
-            updated_at: chrono::Local::now().naive_local(),
-        };
-
-        self.repo.create(&project)
+    pub async fn insert(&self, project: &CreateProjectDto) -> Result<u64, AppError> {
+        self.repo.insert(&Project::from(project)).await
     }
 
-    pub async fn get_project(&mut self, project_id: &str) -> Result<Project, AppError> {
-        self.repo.find_by_id(project_id)
+    pub async fn update_by_id(&self, id: u64, project: &UpdateProjectDto) -> Result<bool, AppError> {
+        self.repo.update_by_id(id, &Project::from(project)).await
     }
+}
 
-    pub async fn get_user_projects(&mut self, user_id: &str) -> Result<Vec<Project>, AppError> {
-        self.repo.find_by_owner(user_id)
+#[async_trait]
+impl BaseService<Project> for ProjectService {
+    type Repository = ProjectRepository;
+
+    fn get_repository(&self) -> &Self::Repository {
+        &self.repo
     }
 }

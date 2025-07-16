@@ -1,14 +1,13 @@
-use chrono::NaiveDateTime;
-use diesel::prelude::*;
+use chrono::{Local, NaiveDateTime};
 use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
 
-use crate::schema::i18n_phrase_screenshots;
+use crate::dtos::screenshot::{CreateScreenshotDto, UpdateScreenshotDto};
 
-#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Insertable)]
-#[diesel(table_name = i18n_phrase_screenshots)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Screenshot {
-    pub id: String,
-    pub phrase_id: String,
+    pub id: u64,
+    pub phrase_id: u64,
     pub image_url: String,
     pub description: Option<String>,
     pub crt_by: String,
@@ -17,16 +16,32 @@ pub struct Screenshot {
     pub upt_at: NaiveDateTime,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct CreateScreenshot {
-    pub phrase_id: String,
-    pub image_url: String,
-    pub description: Option<String>,
+impl From<&CreateScreenshotDto> for Screenshot {
+    fn from(dto: &CreateScreenshotDto) -> Self {
+        Screenshot {
+            id: 0,
+            phrase_id: dto.phrase_id,
+            image_url: dto.image_url.clone(),
+            description: dto.description.clone(),
+            crt_by: "".to_string(),
+            crt_at: Local::now().naive_local(),
+            upt_by: None,
+            upt_at: Local::now().naive_local(),
+        }
+    }
 }
 
-#[derive(Debug, AsChangeset, Deserialize)]
-#[diesel(table_name = i18n_phrase_screenshots)]
-pub struct UpdateScreenshot {
-    pub image_url: Option<String>,
-    pub description: Option<String>,
+impl From<&UpdateScreenshotDto> for Screenshot {
+    fn from(dto: &UpdateScreenshotDto) -> Self {
+        Screenshot {
+            id: 0,
+            phrase_id: 0,
+            image_url: dto.image_url.clone().unwrap_or_default(),
+            description: dto.description.clone(),
+            crt_by: "".to_string(),
+            crt_at: Local::now().naive_local(),
+            upt_by: None,
+            upt_at: Local::now().naive_local(),
+        }
+    }
 }

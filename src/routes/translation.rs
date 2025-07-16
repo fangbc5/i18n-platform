@@ -1,82 +1,64 @@
-use crate::{errors::AppError, services::TranslationService};
-use axum::{
-    extract::State,
-    routing::{get, post},
-    Json, Router,
+use crate::{
+    dtos::translation::{CreateTranslationDto, UpdateTranslationDto},
+    errors::AppError,
+    middleware::auth::Authentication,
+    services::{translation_service::TranslationService, BaseService},
 };
-use serde::{Deserialize, Serialize};
+use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
 
-#[derive(Debug, Deserialize)]
-pub struct CreateTranslationRequest {
-    pub phrase_id: String,
-    pub language: String,
-    pub translated_text: String,
+pub fn translation_routes(cfg: &mut web::ServiceConfig) {
+    cfg.service(
+        web::scope("")
+            .wrap(Authentication::default())
+            .service(create_translation)
+            .service(get_translations)
+            .service(get_translation)
+            .service(update_translation)
+            .service(delete_translation),
+    );
 }
 
-#[derive(Debug, Deserialize)]
-pub struct UpdateTranslationRequest {
-    pub translated_text: String,
-    pub status: String,
-}
-
-pub fn translation_routes() -> Router {
-    Router::new()
-        .route("/", post(create_translation))
-        .route("/:id", get(get_translation))
-        .route("/phrase/:id", get(get_phrase_translations))
-        .route("/:id", post(update_translation))
-        .route("/:id", delete(delete_translation))
-}
-
+#[post("")]
 async fn create_translation(
-    State(translation_service): State<TranslationService>,
-    Path(translator_id): Path<String>,
-    Json(req): Json<CreateTranslationRequest>,
-) -> Result<Json<Translation>, AppError> {
-    let translation = translation_service
-        .create_translation(
-            &req.phrase_id,
-            &req.language,
-            &req.translated_text,
-            Some(&translator_id),
-        )
-        .await?;
-    Ok(Json(translation))
+    translation_service: web::Data<TranslationService>,
+    translation: web::Json<CreateTranslationDto>,
+) -> Result<impl Responder, AppError> {
+    let translation = translation_service.insert(&translation.into_inner()).await?;
+    Ok(HttpResponse::Created().json(translation))
 }
 
+#[get("")]
+async fn get_translations(
+    translation_service: web::Data<TranslationService>,
+) -> Result<impl Responder, AppError> {
+    let translations = translation_service.select_all().await?;
+    Ok(HttpResponse::Ok().json(translations))
+}
+
+#[get("/{id}")]
 async fn get_translation(
-    State(translation_service): State<TranslationService>,
-    Path(id): Path<String>,
-) -> Result<Json<Translation>, AppError> {
-    let translation = translation_service.get_translation(&id).await?;
-    Ok(Json(translation))
+    translation_service: web::Data<TranslationService>,
+    id: web::Path<u64>,
+) -> Result<impl Responder, AppError> {
+    let translation = translation_service.select_by_id(id.into_inner()).await?;
+    Ok(HttpResponse::Ok().json(translation))
 }
 
-async fn get_phrase_translations(
-    State(translation_service): State<TranslationService>,
-    Path(phrase_id): Path<String>,
-) -> Result<Json<Vec<Translation>>, AppError> {
-    let translations = translation_service
-        .get_phrase_translations(&phrase_id)
-        .await?;
-    Ok(Json(translations))
-}
-
+#[put("/{id}")]
 async fn update_translation(
-    State(translation_service): State<TranslationService>,
-    Path(id): Path<String>,
-    Json(req): Json<UpdateTranslationRequest>,
-) -> Result<StatusCode, AppError> {
-    translation_service
-        .update_translation(&id, &req.translated_text, &req.status)
-        .await?;
-    Ok(StatusCode::NO_CONTENT)
+    translation_service: web::Data<TranslationService>,
+    id: web::Path<u64>,
+    translation: web::Json<UpdateTranslationDto>,
+) -> Result<impl Responder, AppError> {
+    let translation = translation_service.update_by_id(id.into_inner(), &translation.into_inner()).await?;
+    Ok(HttpResponse::Ok().json(translation))
 }
 
+#[delete("/{id}")]
 async fn delete_translation(
-    State(translation_service): State<TranslationService>,
-    Path(id): Path<String>,
-) -> Result<StatusCode, AppError> {
-    translation_service.delete_translation(&id).await?;
-    Ok(StatusCode::NO_CONTENT)
+    translation_service: web::Data<TranslationService>,
+    id: web::Path<u64>,
+) -> Result<impl Responder, AppError> {
+    translation_service.delete_by_id(id.into_inner()).await?;
+    Ok(HttpResponse::NoContent().finish())
 }

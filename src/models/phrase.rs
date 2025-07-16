@@ -1,17 +1,16 @@
-use chrono::NaiveDateTime;
-use diesel::prelude::*;
+use chrono::{Local, NaiveDateTime};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sqlx::FromRow;
 
-use crate::schema::i18n_phrases;
+use crate::dtos::phrase::{CreatePhraseDto, UpdatePhraseDto};
 
-#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Insertable)]
-#[diesel(table_name = i18n_phrases)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Phrase {
-    pub id: String,
-    pub project_id: String,
-    pub module_id: Option<String>,
-    pub type_id: String,
+    pub id: u64,
+    pub project_id: u64,
+    pub module_id: Option<u64>,
+    pub type_id: u64,
     pub key: String,
     pub base_content: String,
     pub context: Option<String>,
@@ -26,32 +25,48 @@ pub struct Phrase {
     pub upt_at: NaiveDateTime,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct CreatePhrase {
-    pub project_id: String,
-    pub module_id: Option<String>,
-    pub type_id: String,
-    pub key: String,
-    pub base_content: String,
-    pub context: Option<String>,
-    pub variables: Option<Value>,
-    pub platforms: Value,
-    pub tags: Option<Value>,
-    pub max_length: Option<i32>,
-    pub is_plural: Option<bool>,
+impl From<&CreatePhraseDto> for Phrase {
+    fn from(dto: &CreatePhraseDto) -> Self {
+        Phrase {
+            id: 0,
+            project_id: dto.project_id,
+            module_id: None,
+            type_id: 1,
+            key: dto.key.clone(),
+            base_content: dto.source_text.clone(),
+            context: dto.context.clone(),
+            variables: None,
+            platforms: Value::Null,
+            tags: None,
+            max_length: None,
+            is_plural: false,
+            crt_by: "".to_string(),
+            crt_at: Local::now().naive_local(),
+            upt_by: None,
+            upt_at: Local::now().naive_local(),
+        }
+    }
 }
 
-#[derive(Debug, AsChangeset, Deserialize)]
-#[diesel(table_name = i18n_phrases)]
-pub struct UpdatePhrase {
-    pub module_id: Option<String>,
-    pub type_id: Option<String>,
-    pub key: Option<String>,
-    pub base_content: Option<String>,
-    pub context: Option<String>,
-    pub variables: Option<Value>,
-    pub platforms: Option<Value>,
-    pub tags: Option<Value>,
-    pub max_length: Option<i32>,
-    pub is_plural: Option<bool>,
+impl From<&UpdatePhraseDto> for Phrase {
+    fn from(dto: &UpdatePhraseDto) -> Self {
+        Phrase {
+            id: 0,
+            project_id: 0,
+            module_id: None,
+            type_id: 0,
+            key: dto.key.clone().unwrap_or_default(),
+            base_content: dto.source_text.clone().unwrap_or_default(),
+            context: dto.context.clone(),
+            variables: None,
+            platforms: Value::Null,
+            tags: None,
+            max_length: None,
+            is_plural: false,
+            crt_by: "".to_string(),
+            crt_at: Local::now().naive_local(),
+            upt_by: None,
+            upt_at: Local::now().naive_local(),
+        }
+    }
 }

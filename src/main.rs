@@ -1,3 +1,10 @@
+use std::sync::Arc;
+
+use actix_cors::Cors;
+use actix_web::{middleware::Logger, web, App, HttpServer};
+use sqlx::MySqlPool;
+use tracing::info;
+
 mod config;
 mod dtos;
 mod errors;
@@ -5,102 +12,85 @@ mod middleware;
 mod models;
 mod repositories;
 mod routes;
-mod schema;
 mod services;
 mod utils;
+mod constants;
 
-use crate::{
-    config::SETTINGS,
-    routes::{
-        auth::auth_routes, phrase::phrase_routes, project::project_routes, term::term_routes,
-        translation::translation_routes,
-    },
-};
-use axum::{extract::Extension, middleware::from_fn, routing::get, serve::serve, Router};
-use std::{net::SocketAddr, sync::Arc};
-use tower_http::{
-    cors::{Any, CorsLayer},
-    trace::TraceLayer,
-};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use crate::config::SETTINGS;
 
-async fn healthcheck() -> &'static str {
-    "OK"
+#[derive(Clone)]
+pub struct AppState {
+    mysql_pool: Arc<MySqlPool>,
+    redis_client: redis::Client,
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 加载配置
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    // 加载环境变量
     dotenv::dotenv().ok();
-    config::init();
 
     // 初始化日志
-    tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::new(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()),
-        ))
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    if std::env::var("RUST_LOG").is_err() {
+        std::env::set_var("RUST_LOG", "info");
+    }
+    tracing_subscriber::fmt::init();
+
+    // 加载配置
+    config::init();
+    info!("配置加载完成");
 
     // 初始化数据库连接池
-    let pool = repositories::init_pool()?;
-    let pool = Arc::new(pool);
+    let db_pool = Arc::new(
+        utils::database::init()
+            .await
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?,
+    );
+    info!("数据库连接池初始化完成");
 
-    // 初始化Redis连接池
-    let redis_pool = utils::redis::init_pool()?;
-    let redis_pool = Arc::new(redis_pool);
+    // 初始化Redis客户端
+    let redis_client = utils::redis::init().await;
+    info!("Redis客户端初始化完成");
 
-    // 初始化MinIO客户端
-    let s3_client = utils::storage::init_s3_client().await?;
-    let s3_client = Arc::new(s3_client);
-
-    // 初始化Casbin执行器
-    let casbin_enforcer = utils::casbin::init_enforcer().await?;
-    let casbin_enforcer = Arc::new(casbin_enforcer);
-
-    // 构建共享状态
+    // 创建应用状态
     let state = Arc::new(AppState {
-        db: pool.clone(),
-        redis: redis_pool.clone(),
-        s3: s3_client.clone(),
-        casbin: casbin_enforcer.clone(),
+        mysql_pool: db_pool,
+        redis_client,
     });
 
-    // CORS配置
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+    // 启动HTTP服务器
+    info!("正在启动服务器...");
+    HttpServer::new(move || {
+        // CORS配置
+        let cors = Cors::default()
+            .allow_any_origin()
+            .allow_any_method()
+            .allow_any_header()
+            .max_age(3600);
 
-    // 构建路由
-    let app = Router::new()
-        .route("/health", get(healthcheck))
-        .nest("/api/auth", auth_routes())
-        .nest("/api/projects", project_routes())
-        .nest("/api/phrases", phrase_routes())
-        .nest("/api/terms", term_routes())
-        .nest("/api/translations", translation_routes())
-        .layer(TraceLayer::new_for_http())
-        .layer(cors)
-        .layer(Extension(state));
-
-    // 添加全局中间件
-    let app = app.layer(from_fn(middleware::auth::auth_middleware));
-
-    // 获取服务地址
-    let addr = SocketAddr::from(([0, 0, 0, 0], SETTINGS.server.port));
-    tracing::info!("服务启动于 {}", addr);
-
-    // 启动服务
-    serve(app.into_make_service(), addr).await?;
-
-    Ok(())
+        App::new()
+            .wrap(cors)
+            .wrap(Logger::default())
+            .app_data(web::Data::new(state.clone()))
+            // API路由
+            .service(
+                web::scope("/api")
+                    .service(web::scope("/auth").configure(routes::auth_routes))
+                    .service(web::scope("/users").configure(routes::user_routes))
+                    .service(web::scope("/projects").configure(routes::project_routes))
+                    .service(web::scope("/languages").configure(routes::language_routes))
+                    .service(web::scope("/modules").configure(routes::module_routes))
+                    .service(web::scope("/phrases").configure(routes::phrase_routes))
+                    .service(web::scope("/translations").configure(routes::translation_routes))
+                    .service(web::scope("/terms").configure(routes::term_routes))
+                    .service(web::scope("/screenshots").configure(routes::screenshot_routes)),
+            )
+            // 健康检查
+            .route("/health", web::get().to(health_check))
+    })
+    .bind((SETTINGS.server.host.as_str(), SETTINGS.server.port))?
+    .run()
+    .await
 }
-
-// 共享状态结构
-pub struct AppState {
-    pub db: Arc<diesel::r2d2::Pool<diesel::r2d2::ConnectionManager<diesel::MysqlConnection>>>,
-    pub redis: Arc<redis::Client>,
-    pub s3: Arc<aws_sdk_s3::Client>,
-    pub casbin: Arc<casbin::Enforcer>,
+async fn health_check() -> &'static str {
+    "OK"
 }

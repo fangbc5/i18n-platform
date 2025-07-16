@@ -1,86 +1,64 @@
-use crate::{errors::AppError, services::PhraseService};
-use axum::{
-    extract::State,
-    routing::{get, post},
-    Json, Router,
+use crate::{
+    dtos::phrase::{CreatePhraseDto, UpdatePhraseDto},
+    errors::AppError,
+    middleware::auth::Authentication,
+    services::{phrase_service::PhraseService, BaseService},
 };
-use serde::{Deserialize, Serialize};
+use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
 
-#[derive(Debug, Deserialize)]
-pub struct CreatePhraseRequest {
-    pub project_id: String,
-    pub key: String,
-    pub source_text: String,
-    pub context: Option<String>,
+pub fn phrase_routes(cfg: &mut web::ServiceConfig) {
+    cfg.service(
+        web::scope("")
+            .wrap(Authentication::default())
+            .service(create_phrase)
+            .service(get_phrases)
+            .service(get_phrase)
+            .service(update_phrase)
+            .service(delete_phrase),
+    );
 }
 
-#[derive(Debug, Deserialize)]
-pub struct UpdatePhraseRequest {
-    pub key: Option<String>,
-    pub source_text: Option<String>,
-    pub context: Option<String>,
-}
-
-pub fn phrase_routes() -> Router {
-    Router::new()
-        .route("/", post(create_phrase))
-        .route("/:id", get(get_phrase))
-        .route("/project/:id", get(get_project_phrases))
-        .route("/:id", post(update_phrase))
-        .route("/:id", delete(delete_phrase))
-}
-
+#[post("")]
 async fn create_phrase(
-    State(phrase_service): State<PhraseService>,
-    Json(req): Json<CreatePhraseRequest>,
-) -> Result<Json<Phrase>, AppError> {
-    let phrase = phrase_service
-        .create_phrase(
-            &req.project_id,
-            &req.key,
-            &req.source_text,
-            req.context.as_deref(),
-        )
-        .await?;
-    Ok(Json(phrase))
+    phrase_service: web::Data<PhraseService>,
+    phrase: web::Json<CreatePhraseDto>,
+) -> Result<impl Responder, AppError> {
+    let phrase = phrase_service.insert(&phrase.into_inner()).await?;
+    Ok(HttpResponse::Created().json(phrase))
 }
 
+#[get("")]
+async fn get_phrases(
+    phrase_service: web::Data<PhraseService>,
+) -> Result<impl Responder, AppError> {
+    let phrases = phrase_service.select_all().await?;
+    Ok(HttpResponse::Ok().json(phrases))
+}
+
+#[get("/{id}")]
 async fn get_phrase(
-    State(phrase_service): State<PhraseService>,
-    Path(id): Path<String>,
-) -> Result<Json<Phrase>, AppError> {
-    let phrase = phrase_service.get_phrase(&id).await?;
-    Ok(Json(phrase))
+    phrase_service: web::Data<PhraseService>,
+    id: web::Path<u64>,
+) -> Result<impl Responder, AppError> {
+    let phrase = phrase_service.select_by_id(id.into_inner()).await?;
+    Ok(HttpResponse::Ok().json(phrase))
 }
 
-async fn get_project_phrases(
-    State(phrase_service): State<PhraseService>,
-    Path(project_id): Path<String>,
-) -> Result<Json<Vec<Phrase>>, AppError> {
-    let phrases = phrase_service.get_project_phrases(&project_id).await?;
-    Ok(Json(phrases))
-}
-
+#[put("/{id}")]
 async fn update_phrase(
-    State(phrase_service): State<PhraseService>,
-    Path(id): Path<String>,
-    Json(req): Json<UpdatePhraseRequest>,
-) -> Result<StatusCode, AppError> {
-    phrase_service
-        .update_phrase(
-            &id,
-            req.key.as_deref(),
-            req.source_text.as_deref(),
-            req.context.as_deref(),
-        )
-        .await?;
-    Ok(StatusCode::NO_CONTENT)
+    phrase_service: web::Data<PhraseService>,
+    id: web::Path<u64>,
+    phrase: web::Json<UpdatePhraseDto>,
+) -> Result<impl Responder, AppError> {
+    let phrase = phrase_service.update_by_id(id.into_inner(), &phrase.into_inner()).await?;
+    Ok(HttpResponse::Ok().json(phrase))
 }
 
+#[delete("/{id}")]
 async fn delete_phrase(
-    State(phrase_service): State<PhraseService>,
-    Path(id): Path<String>,
-) -> Result<StatusCode, AppError> {
-    phrase_service.delete_phrase(&id).await?;
-    Ok(StatusCode::NO_CONTENT)
+    phrase_service: web::Data<PhraseService>,
+    id: web::Path<u64>,
+) -> Result<impl Responder, AppError> {
+    phrase_service.delete_by_id(id.into_inner()).await?;
+    Ok(HttpResponse::NoContent().finish())
 }

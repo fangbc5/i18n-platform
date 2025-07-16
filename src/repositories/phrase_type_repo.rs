@@ -1,62 +1,62 @@
-use diesel::prelude::*;
-use diesel::result::Error;
-use diesel::MysqlConnection;
-use uuid::Uuid;
+use std::sync::Arc;
 
-use crate::models::{CreatePhraseType, PhraseType, UpdatePhraseType};
-use crate::schema::i18n_phrase_types;
+use async_trait::async_trait;
+use sqlx::MySqlPool;
 
-pub struct PhraseTypeRepository;
+use crate::{errors::AppError, models::phrase_type::PhraseType};
+
+use super::BaseRepository;
+
+pub struct PhraseTypeRepository {
+    pool: Arc<MySqlPool>,
+}
 
 impl PhraseTypeRepository {
-    pub fn find_all(conn: &mut MysqlConnection) -> Result<Vec<PhraseType>, Error> {
-        i18n_phrase_types::table.load::<PhraseType>(conn)
+    pub fn new(pool: Arc<MySqlPool>) -> Self {
+        Self { pool }
     }
 
-    pub fn find_by_id(conn: &mut MysqlConnection, id: &str) -> Result<Option<PhraseType>, Error> {
-        i18n_phrase_types::table.find(id).first(conn).optional()
+    /// 根据项目ID查找短语类型列表
+    pub async fn find_by_project_id(&self, project_id: u64) -> Result<Vec<PhraseType>, AppError> {
+        sqlx::query_as::<_, PhraseType>(&format!(
+            r#"
+            SELECT * FROM {} WHERE project_id = ?
+            "#,
+            self.get_table_name()
+        ))
+        .bind(project_id)
+        .fetch_all(self.get_pool())
+        .await
+        .map_err(AppError::from)
     }
 
-    pub fn create(
-        conn: &mut MysqlConnection,
-        new_type: &CreatePhraseType,
-        user_id: &str,
-    ) -> Result<PhraseType, Error> {
-        let phrase_type = PhraseType {
-            id: Uuid::new_v4().to_string(),
-            name: new_type.name.clone(),
-            description: new_type.description.clone(),
-            icon: new_type.icon.clone(),
-            crt_by: user_id.to_string(),
-            crt_at: chrono::Local::now().naive_local(),
-            upt_by: None,
-            upt_at: chrono::Local::now().naive_local(),
-        };
+    /// 根据项目ID和类型代码查找短语类型
+    pub async fn find_by_project_and_code(
+        &self,
+        project_id: u64,
+        code: &str,
+    ) -> Result<Option<PhraseType>, AppError> {
+        sqlx::query_as::<_, PhraseType>(&format!(
+            r#"
+            SELECT * FROM {} WHERE project_id = ? AND code = ?
+            "#,
+            self.get_table_name()
+        ))
+        .bind(project_id)
+        .bind(code)
+        .fetch_optional(self.get_pool())
+        .await
+        .map_err(AppError::from)
+    }
+}
 
-        diesel::insert_into(i18n_phrase_types::table)
-            .values(&phrase_type)
-            .execute(conn)?;
-
-        Ok(phrase_type)
+#[async_trait]
+impl BaseRepository<PhraseType> for PhraseTypeRepository {
+    fn get_table_name(&self) -> &str {
+        "i18n_phrase_types"
     }
 
-    pub fn update(
-        conn: &mut MysqlConnection,
-        id: &str,
-        phrase_type: &UpdatePhraseType,
-        user_id: &str,
-    ) -> Result<PhraseType, Error> {
-        diesel::update(i18n_phrase_types::table.find(id))
-            .set((
-                phrase_type,
-                i18n_phrase_types::upt_by.eq(Some(user_id.to_string())),
-                i18n_phrase_types::upt_at.eq(chrono::Local::now().naive_local()),
-            ))
-            .get_result(conn)
-    }
-
-    pub fn delete(conn: &mut MysqlConnection, id: &str) -> Result<bool, Error> {
-        let count = diesel::delete(i18n_phrase_types::table.find(id)).execute(conn)?;
-        Ok(count > 0)
+    fn get_pool(&self) -> &MySqlPool {
+        &self.pool
     }
 }

@@ -5,16 +5,15 @@ edition = "2021"
 
 [dependencies]
 # Web框架
-axum = { version = "0.7", features = ["multipart"] }
-tower = "0.4"
-tower-http = { version = "0.5", features = ["cors", "trace"] }
-tokio = { version = "1.35", features = ["full"] }
-hyper = { version = "1.0", features = ["full"] }
+actix-web = "4.4"
+actix-cors = "0.6"
+actix-multipart = "0.6"
 
 # 数据库
-diesel = { version = "2.1", features = ["mysql", "r2d2", "chrono", "serde_json", "mysql_backend"] }
-diesel-derive-enum = { version = "2.1", features = ["mysql"] }
-r2d2 = "0.8"
+sqlx = { version = "0.7", features = ["runtime-tokio", "tls-native-tls", "mysql", "chrono"] }
+
+# 缓存
+redis = { version = "0.24", features = ["tokio-comp"]}
 
 # 序列化
 serde = { version = "1.0", features = ["derive"] }
@@ -31,25 +30,24 @@ lazy_static = "1.4"
 # 认证与权限
 jsonwebtoken = "9.2"
 bcrypt = "0.15"
-casbin = { version = "2.0.9" }
-
-# 缓存
-redis = { version = "0.24", features = ["tokio-comp"] }
+casbin = { version = "2.0.9", features = ["runtime-tokio", "logging"] }
 
 # 存储
-aws-sdk-s3 = "1.12"
-aws-config = "1.1"
+aws-sdk-s3 = { version = "1.96", features = ["behavior-version-latest"] }
 
 # 消息队列
-rdkafka = { version = "0.36", features = ["cmake-build"] }
+rdkafka = { version = "0.38", features = ["cmake-build"] }
 
 # 工具
+regex = "1.10"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.6", features = ["v4", "serde"] }
 async-trait = "0.1"
 thiserror = "1.0"
 anyhow = "1.0"
 validator = { version = "0.16", features = ["derive"] }
+futures = "0.3"
+tokio = { version = "1.36", features = ["full"] }
 
 [dev-dependencies]
 tokio-test = "0.4"

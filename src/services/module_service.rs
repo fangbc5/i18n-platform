@@ -1,47 +1,62 @@
-use diesel::result::Error;
+use std::sync::Arc;
 
-use crate::models::{CreateModule, Module, UpdateModule};
-use crate::repositories::{DbPool, ModuleRepository};
+use sqlx::MySqlPool;
 
-pub struct ModuleService;
+use crate::{
+    dtos::module::{CreateModuleDto, UpdateModuleDto},
+    errors::AppError,
+    models::module::Module,
+    repositories::{module_repo::ModuleRepository, BaseRepository}, services::BaseService,
+};
+
+pub struct ModuleService {
+    repo: Arc<ModuleRepository>,
+}
 
 impl ModuleService {
-    pub async fn find_all(pool: &DbPool) -> Result<Vec<Module>, Error> {
-        let mut conn = pool.get().unwrap();
-        ModuleRepository::find_all(&mut conn)
+    pub fn new(pool: Arc<MySqlPool>) -> Self {
+        Self {
+            repo: Arc::new(ModuleRepository::new(pool)),
+        }
     }
 
-    pub async fn find_by_project(pool: &DbPool, project_id: &str) -> Result<Vec<Module>, Error> {
-        let mut conn = pool.get().unwrap();
-        ModuleRepository::find_by_project(&mut conn, project_id)
+    pub async fn select_by_id(&self, id: u64) -> Result<Option<Module>, AppError> {
+        self.repo.select_by_id(id).await
     }
 
-    pub async fn find_by_id(pool: &DbPool, id: &str) -> Result<Option<Module>, Error> {
-        let mut conn = pool.get().unwrap();
-        ModuleRepository::find_by_id(&mut conn, id)
+    pub async fn select_all(&self) -> Result<Vec<Module>, AppError> {
+        self.repo.select_all().await
     }
 
-    pub async fn create(
-        pool: &DbPool,
-        new_module: &CreateModule,
-        user_id: &str,
-    ) -> Result<Module, Error> {
-        let mut conn = pool.get().unwrap();
-        ModuleRepository::create(&mut conn, new_module, user_id)
+    pub async fn select_by_page(
+        &self,
+        page: u32,
+        page_size: u32,
+    ) -> Result<(Vec<Module>, u64), AppError> {
+        self.repo.select_by_page(page, page_size).await
     }
 
-    pub async fn update(
-        pool: &DbPool,
-        id: &str,
-        module: &UpdateModule,
-        user_id: &str,
-    ) -> Result<Module, Error> {
-        let mut conn = pool.get().unwrap();
-        ModuleRepository::update(&mut conn, id, module, user_id)
+    pub async fn insert(&self, module: &CreateModuleDto) -> Result<u64, AppError> {
+        self.repo.insert(&Module::from(module)).await
     }
 
-    pub async fn delete(pool: &DbPool, id: &str) -> Result<bool, Error> {
-        let mut conn = pool.get().unwrap();
-        ModuleRepository::delete(&mut conn, id)
+    pub async fn update_by_id(&self, id: u64, module: &UpdateModuleDto) -> Result<bool, AppError> {
+        self.repo.update_by_id(id, &Module::from(module)).await
+    }
+
+    pub async fn delete_by_id(&self, id: u64) -> Result<bool, AppError> {
+        self.repo.delete_by_id(id).await
+    }
+
+    pub async fn delete_by_ids(&self, ids: &[u64]) -> Result<u64, AppError> {
+        self.repo.delete_by_ids(ids).await
+    }
+}
+
+impl BaseService<Module> for ModuleService {
+    type Repository = ModuleRepository;
+
+    fn get_repository(&self) -> &Self::Repository {
+        &self.repo
     }
 }

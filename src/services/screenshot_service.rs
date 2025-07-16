@@ -1,47 +1,37 @@
-use diesel::result::Error;
+use std::sync::Arc;
 
-use crate::models::{CreateScreenshot, Screenshot, UpdateScreenshot};
-use crate::repositories::{DbPool, ScreenshotRepository};
+use async_trait::async_trait;
+use sqlx::MySqlPool;
 
-pub struct ScreenshotService;
+use crate::{
+    dtos::screenshot::{CreateScreenshotDto, UpdateScreenshotDto}, errors::AppError, models::screenshot::Screenshot, repositories::{base_repo::BaseRepository, screenshot_repo::ScreenshotRepository}, services::BaseService
+};
+
+pub struct ScreenshotService {
+    repo: Arc<ScreenshotRepository>,
+}
 
 impl ScreenshotService {
-    pub async fn find_all(pool: &DbPool) -> Result<Vec<Screenshot>, Error> {
-        let mut conn = pool.get().unwrap();
-        ScreenshotRepository::find_all(&mut conn)
+    pub fn new(pool: Arc<MySqlPool>) -> Self {
+        Self {
+            repo: Arc::new(ScreenshotRepository::new(pool)),
+        }
     }
 
-    pub async fn find_by_phrase(pool: &DbPool, phrase_id: &str) -> Result<Vec<Screenshot>, Error> {
-        let mut conn = pool.get().unwrap();
-        ScreenshotRepository::find_by_phrase(&mut conn, phrase_id)
+    pub async fn insert(&self, screenshot: &CreateScreenshotDto) -> Result<u64, AppError> {
+        self.repo.insert(&Screenshot::from(screenshot)).await
     }
 
-    pub async fn find_by_id(pool: &DbPool, id: &str) -> Result<Option<Screenshot>, Error> {
-        let mut conn = pool.get().unwrap();
-        ScreenshotRepository::find_by_id(&mut conn, id)
+    pub async fn update_by_id(&self, id: u64, screenshot: &UpdateScreenshotDto) -> Result<bool, AppError> {
+        self.repo.update_by_id(id, &Screenshot::from(screenshot)).await
     }
+}
 
-    pub async fn create(
-        pool: &DbPool,
-        new_screenshot: &CreateScreenshot,
-        user_id: &str,
-    ) -> Result<Screenshot, Error> {
-        let mut conn = pool.get().unwrap();
-        ScreenshotRepository::create(&mut conn, new_screenshot, user_id)
-    }
+#[async_trait]
+impl BaseService<Screenshot> for ScreenshotService {
+    type Repository = ScreenshotRepository;
 
-    pub async fn update(
-        pool: &DbPool,
-        id: &str,
-        screenshot: &UpdateScreenshot,
-        user_id: &str,
-    ) -> Result<Screenshot, Error> {
-        let mut conn = pool.get().unwrap();
-        ScreenshotRepository::update(&mut conn, id, screenshot, user_id)
-    }
-
-    pub async fn delete(pool: &DbPool, id: &str) -> Result<bool, Error> {
-        let mut conn = pool.get().unwrap();
-        ScreenshotRepository::delete(&mut conn, id)
+    fn get_repository(&self) -> &Self::Repository {
+        &self.repo
     }
 }

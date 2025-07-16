@@ -1,48 +1,81 @@
-use crate::{errors::AppError, models::Translation};
-use diesel::{prelude::*, MysqlConnection};
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use sqlx::MySqlPool;
+
+use crate::{errors::AppError, models::translation::Translation};
+
+use super::BaseRepository;
 
 pub struct TranslationRepository {
-    conn: MysqlConnection,
+    pool: Arc<MySqlPool>,
 }
 
 impl TranslationRepository {
-    pub fn new(conn: MysqlConnection) -> Self {
-        Self { conn }
+    pub fn new(pool: Arc<MySqlPool>) -> Self {
+        Self { pool }
     }
 
-    pub fn find_by_id(&mut self, translation_id: i32) -> Result<Translation, AppError> {
-        use crate::schema::translations::dsl::*;
-        translations
-            .find(translation_id)
-            .first(&mut self.conn)
-            .map_err(AppError::from)
+    /// 根据项目ID和语言代码查找翻译列表
+    pub async fn find_by_project_and_language(
+        &self,
+        project_id: u64,
+        language_code: &str,
+    ) -> Result<Vec<Translation>, AppError> {
+        sqlx::query_as::<_, Translation>(&format!(
+            r#"
+            SELECT * FROM {} WHERE project_id = ? AND language_code = ?
+            "#,
+            self.get_table_name()
+        ))
+        .bind(project_id)
+        .bind(language_code)
+        .fetch_all(self.get_pool())
+        .await
+        .map_err(AppError::from)
     }
 
-    pub fn find_by_phrase(&mut self, phrase_id_param: i32) -> Result<Vec<Translation>, AppError> {
-        use crate::schema::translations::dsl::*;
-        translations
-            .filter(phrase_id.eq(phrase_id_param))
-            .load(&mut self.conn)
-            .map_err(AppError::from)
+    /// 根据短语ID和语言代码查找翻译
+    pub async fn find_by_phrase_and_language(
+        &self,
+        phrase_id: u64,
+        language_code: &str,
+    ) -> Result<Option<Translation>, AppError> {
+        sqlx::query_as::<_, Translation>(&format!(
+            r#"
+            SELECT * FROM {} WHERE phrase_id = ? AND language_code = ?
+            "#,
+            self.get_table_name()
+        ))
+        .bind(phrase_id)
+        .bind(language_code)
+        .fetch_optional(self.get_pool())
+        .await
+        .map_err(AppError::from)
     }
 
-    pub fn create(&mut self, new_translation: &Translation) -> Result<Translation, AppError> {
-        use crate::schema::translations::dsl::*;
-        diesel::insert_into(translations)
-            .values(new_translation)
-            .get_result(&mut self.conn)
-            .map_err(AppError::from)
+    /// 根据项目ID查找翻译列表
+    pub async fn find_by_project_id(&self, project_id: u64) -> Result<Vec<Translation>, AppError> {
+        sqlx::query_as::<_, Translation>(&format!(
+            r#"
+            SELECT * FROM {} WHERE project_id = ?
+            "#,
+            self.get_table_name()
+        ))
+        .bind(project_id)
+        .fetch_all(self.get_pool())
+        .await
+        .map_err(AppError::from)
+    }
+}
+
+#[async_trait]
+impl BaseRepository<Translation> for TranslationRepository {
+    fn get_table_name(&self) -> &str {
+        "i18n_translations"
     }
 
-    pub fn update_status(
-        &mut self,
-        translation_id: i32,
-        new_status: &str,
-    ) -> Result<Translation, AppError> {
-        use crate::schema::translations::dsl::*;
-        diesel::update(translations.find(translation_id))
-            .set(status.eq(new_status))
-            .get_result(&mut self.conn)
-            .map_err(AppError::from)
+    fn get_pool(&self) -> &MySqlPool {
+        &self.pool
     }
 }

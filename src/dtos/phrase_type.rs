@@ -21,3 +21,17 @@ pub struct UpdatePhraseTypeRequest {
     pub description: Option<String>,
     pub icon: Option<String>,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct CreatePhraseTypeDto {
+    pub name: String,
+    pub description: Option<String>,
+    pub icon: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdatePhraseTypeDto {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub icon: Option<String>,
+}

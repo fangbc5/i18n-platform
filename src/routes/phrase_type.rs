@@ -1,78 +1,64 @@
 use crate::{
-    dtos::common::ApiResponse,
-    middleware::auth::Claims,
-    models::{CreatePhraseType, UpdatePhraseType},
-    repositories::DbPool,
-    services::PhraseTypeService,
+    dtos::phrase_type::{CreatePhraseTypeDto, UpdatePhraseTypeDto},
+    errors::AppError,
+    middleware::auth::Authentication,
+    services::{phrase_type_service::PhraseTypeService, BaseService},
 };
-use axum::{
-    extract::{Path, State},
-    routing::{delete, get, post, put},
-    Json, Router,
-};
+use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
 
-pub fn phrase_type_routes() -> Router<DbPool> {
-    Router::new()
-        .route("/phrase-types", get(list_phrase_types))
-        .route("/phrase-types", post(create_phrase_type))
-        .route("/phrase-types/:id", get(get_phrase_type))
-        .route("/phrase-types/:id", put(update_phrase_type))
-        .route("/phrase-types/:id", delete(delete_phrase_type))
+pub fn phrase_type_routes(cfg: &mut web::ServiceConfig) {
+    cfg.service(
+        web::scope("")
+            .wrap(Authentication::default())
+            .service(create_phrase_type)
+            .service(get_phrase_types)
+            .service(get_phrase_type)
+            .service(update_phrase_type)
+            .service(delete_phrase_type),
+    );
 }
 
-async fn list_phrase_types(State(pool): State<DbPool>) -> Result<Json<ApiResponse>, ApiResponse> {
-    let types = PhraseTypeService::find_all(&pool)
-        .await
-        .map_err(|e| ApiResponse::error(&e.to_string()))?;
-    Ok(Json(ApiResponse::success(types)))
-}
-
-async fn get_phrase_type(
-    State(pool): State<DbPool>,
-    Path(id): Path<String>,
-) -> Result<Json<ApiResponse>, ApiResponse> {
-    let phrase_type = PhraseTypeService::find_by_id(&pool, &id)
-        .await
-        .map_err(|e| ApiResponse::error(&e.to_string()))?
-        .ok_or_else(|| ApiResponse::not_found("Phrase type not found"))?;
-    Ok(Json(ApiResponse::success(phrase_type)))
-}
-
+#[post("")]
 async fn create_phrase_type(
-    State(pool): State<DbPool>,
-    claims: Claims,
-    Json(phrase_type): Json<CreatePhraseType>,
-) -> Result<Json<ApiResponse>, ApiResponse> {
-    let phrase_type = PhraseTypeService::create(&pool, &phrase_type, &claims.user_id)
-        .await
-        .map_err(|e| ApiResponse::error(&e.to_string()))?;
-    Ok(Json(ApiResponse::success(phrase_type)))
+    phrase_type_service: web::Data<PhraseTypeService>,
+    phrase_type: web::Json<CreatePhraseTypeDto>,
+) -> Result<impl Responder, AppError> {
+    let phrase_type = phrase_type_service.insert(&phrase_type.into_inner()).await?;
+    Ok(HttpResponse::Created().json(phrase_type))
 }
 
+#[get("")]
+async fn get_phrase_types(
+    phrase_type_service: web::Data<PhraseTypeService>,
+) -> Result<impl Responder, AppError> {
+    let phrase_types = phrase_type_service.select_all().await?;
+    Ok(HttpResponse::Ok().json(phrase_types))
+}
+
+#[get("/{id}")]
+async fn get_phrase_type(
+    phrase_type_service: web::Data<PhraseTypeService>,
+    id: web::Path<u64>,
+) -> Result<impl Responder, AppError> {
+    let phrase_type = phrase_type_service.select_by_id(id.into_inner()).await?;
+    Ok(HttpResponse::Ok().json(phrase_type))
+}
+
+#[put("/{id}")]
 async fn update_phrase_type(
-    State(pool): State<DbPool>,
-    claims: Claims,
-    Path(id): Path<String>,
-    Json(phrase_type): Json<UpdatePhraseType>,
-) -> Result<Json<ApiResponse>, ApiResponse> {
-    let phrase_type = PhraseTypeService::update(&pool, &id, &phrase_type, &claims.user_id)
-        .await
-        .map_err(|e| ApiResponse::error(&e.to_string()))?;
-    Ok(Json(ApiResponse::success(phrase_type)))
+    phrase_type_service: web::Data<PhraseTypeService>,
+    id: web::Path<u64>,
+    phrase_type: web::Json<UpdatePhraseTypeDto>,
+) -> Result<impl Responder, AppError> {
+    let phrase_type = phrase_type_service.update_by_id(id.into_inner(), &phrase_type.into_inner()).await?;
+    Ok(HttpResponse::Ok().json(phrase_type))
 }
 
+#[delete("/{id}")]
 async fn delete_phrase_type(
-    State(pool): State<DbPool>,
-    Path(id): Path<String>,
-) -> Result<Json<ApiResponse>, ApiResponse> {
-    let deleted = PhraseTypeService::delete(&pool, &id)
-        .await
-        .map_err(|e| ApiResponse::error(&e.to_string()))?;
-    if deleted {
-        Ok(Json(ApiResponse::success(
-            "Phrase type deleted successfully",
-        )))
-    } else {
-        Err(ApiResponse::not_found("Phrase type not found"))
-    }
+    phrase_type_service: web::Data<PhraseTypeService>,
+    id: web::Path<u64>,
+) -> Result<impl Responder, AppError> {
+    phrase_type_service.delete_by_id(id.into_inner()).await?;
+    Ok(HttpResponse::NoContent().finish())
 }

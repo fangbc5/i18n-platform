@@ -1,51 +1,69 @@
-use crate::{errors::AppError, middleware::auth::AuthenticatedUser, services::UserService};
-use actix_web::{HttpResponse, Scope, web};
-use serde::{Deserialize, Serialize};
+use crate::{
+    dtos::user::UpdateUserDto,
+    errors::AppError,
+    middleware::auth::Authentication,
+    services::{
+        user_service::UserService,
+        BaseService,
+    },
+    utils::jwt::{self},
+};
+use actix_web::{delete, get, put, web, HttpRequest, HttpResponse, Responder};
 
-#[derive(Deserialize)]
-pub struct CreateUserRequest {
-    pub username: String,
-    pub email: String,
-    pub password: String,
+pub fn user_routes(cfg: &mut web::ServiceConfig) {
+    cfg.service(
+        web::scope("")
+            .wrap(Authentication::default())
+            .service(get_users)
+            .service(get_user)
+            .service(update_user)
+            .service(delete_user)
+            .service(get_current_user),
+    );
 }
 
-#[derive(Serialize)]
-pub struct UserResponse {
-    pub id: i32,
-    pub username: String,
-    pub email: String,
+#[get("")]
+async fn get_users(user_service: web::Data<UserService>) -> Result<impl Responder, AppError> {
+    let users = user_service.select_all().await?;
+    Ok(HttpResponse::Ok().json(users))
 }
 
-async fn create_user(
-    req: web::Json<CreateUserRequest>,
-    user_service: web::Data<UserService>,
-) -> Result<HttpResponse, AppError> {
-    let user = user_service
-        .create_user(&req.username, &req.email, &req.password)
-        .await?;
-
-    Ok(HttpResponse::Created().json(UserResponse {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-    }))
-}
-
+#[get("/me")]
 async fn get_current_user(
-    auth_user: AuthenticatedUser,
     user_service: web::Data<UserService>,
-) -> Result<HttpResponse, AppError> {
-    let user = user_service.get_user_by_id(auth_user.user_id).await?;
-
-    Ok(HttpResponse::Ok().json(UserResponse {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-    }))
+    req: HttpRequest,
+) -> Result<impl Responder, AppError> {
+    let claims = jwt::get_claims(&req)?;
+    let user = user_service.select_by_id(claims.sub).await?;
+    Ok(HttpResponse::Ok().json(user))
 }
 
-pub fn user_routes() -> Scope {
-    web::scope("/users")
-        .route("", web::post().to(create_user))
-        .route("/me", web::get().to(get_current_user))
+#[get("/{id}")]
+async fn get_user(
+    user_service: web::Data<UserService>,
+    id: web::Path<u64>,
+) -> Result<impl Responder, AppError> {
+    let user = user_service.select_by_id(id.into_inner()).await?;
+    Ok(HttpResponse::Ok().json(user))
+}
+
+#[put("/{id}")]
+async fn update_user(
+    user_service: web::Data<UserService>,
+    id: web::Path<u64>,
+    user: web::Json<UpdateUserDto>,
+) -> Result<impl Responder, AppError> {
+    let user = user_service
+        .update_by_id(id.into_inner(), &user.into_inner())
+        .await?;
+    Ok(HttpResponse::Ok().json(user))
+}
+
+#[delete("/{id}")]
+async fn delete_user(
+    user_service: web::Data<UserService>,
+    id: web::Path<u64>,
+) -> Result<impl Responder, AppError> {
+    user_service.delete_by_id(id.into_inner()).await?;
+    Ok(HttpResponse::NoContent().finish())
 }

@@ -1,87 +1,66 @@
 use crate::{
-    dtos::common::ApiResponse,
-    middleware::auth::Claims,
-    models::{CreateModule, UpdateModule},
-    repositories::DbPool,
-    services::ModuleService,
+    dtos::module::{CreateModuleDto, ModuleQuery, UpdateModuleDto},
+    errors::AppError,
+    middleware::auth::Authentication,
+    services::module_service::ModuleService,
 };
-use axum::{
-    extract::{Path, State},
-    routing::{delete, get, post, put},
-    Json, Router,
-};
+use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
 
-pub fn module_routes() -> Router<DbPool> {
-    Router::new()
-        .route("/modules", get(list_modules))
-        .route("/modules", post(create_module))
-        .route("/modules/:id", get(get_module))
-        .route("/modules/:id", put(update_module))
-        .route("/modules/:id", delete(delete_module))
-        .route("/projects/:project_id/modules", get(list_project_modules))
+pub fn module_routes(cfg: &mut web::ServiceConfig) {
+    cfg.service(
+        web::scope("")
+            .wrap(Authentication::default())
+            .service(create_module)
+            .service(get_modules)
+            .service(get_module)
+            .service(update_module)
+            .service(delete_module),
+    );
 }
 
-async fn list_modules(State(pool): State<DbPool>) -> Result<Json<ApiResponse>, ApiResponse> {
-    let modules = ModuleService::find_all(&pool)
-        .await
-        .map_err(|e| ApiResponse::error(&e.to_string()))?;
-    Ok(Json(ApiResponse::success(modules)))
-}
-
-async fn list_project_modules(
-    State(pool): State<DbPool>,
-    Path(project_id): Path<String>,
-) -> Result<Json<ApiResponse>, ApiResponse> {
-    let modules = ModuleService::find_by_project(&pool, &project_id)
-        .await
-        .map_err(|e| ApiResponse::error(&e.to_string()))?;
-    Ok(Json(ApiResponse::success(modules)))
-}
-
-async fn get_module(
-    State(pool): State<DbPool>,
-    Path(id): Path<String>,
-) -> Result<Json<ApiResponse>, ApiResponse> {
-    let module = ModuleService::find_by_id(&pool, &id)
-        .await
-        .map_err(|e| ApiResponse::error(&e.to_string()))?
-        .ok_or_else(|| ApiResponse::not_found("Module not found"))?;
-    Ok(Json(ApiResponse::success(module)))
-}
-
+#[post("")]
 async fn create_module(
-    State(pool): State<DbPool>,
-    claims: Claims,
-    Json(module): Json<CreateModule>,
-) -> Result<Json<ApiResponse>, ApiResponse> {
-    let module = ModuleService::create(&pool, &module, &claims.user_id)
-        .await
-        .map_err(|e| ApiResponse::error(&e.to_string()))?;
-    Ok(Json(ApiResponse::success(module)))
+    module_service: web::Data<ModuleService>,
+    module: web::Json<CreateModuleDto>,
+) -> Result<impl Responder, AppError> {
+    let module = module_service.insert(&module.into_inner()).await?;
+    Ok(HttpResponse::Created().json(module))
 }
 
+#[get("")]
+async fn get_modules(
+    module_service: web::Data<ModuleService>,
+    query: web::Query<ModuleQuery>,
+) -> Result<impl Responder, AppError> {
+    let modules = module_service.select_by_page(query.page, query.size).await?;
+    Ok(HttpResponse::Ok().json(modules))
+}
+
+#[get("/{id}")]
+async fn get_module(
+    module_service: web::Data<ModuleService>,
+    id: web::Path<u64>,
+) -> Result<impl Responder, AppError> {
+    let module = module_service.select_by_id(id.into_inner()).await?;
+    Ok(HttpResponse::Ok().json(module))
+}
+
+#[put("/{id}")]
 async fn update_module(
-    State(pool): State<DbPool>,
-    claims: Claims,
-    Path(id): Path<String>,
-    Json(module): Json<UpdateModule>,
-) -> Result<Json<ApiResponse>, ApiResponse> {
-    let module = ModuleService::update(&pool, &id, &module, &claims.user_id)
-        .await
-        .map_err(|e| ApiResponse::error(&e.to_string()))?;
-    Ok(Json(ApiResponse::success(module)))
+    module_service: web::Data<ModuleService>,
+    id: web::Path<u64>,
+    module: web::Json<UpdateModuleDto>,
+) -> Result<impl Responder, AppError> {
+
+    let module = module_service.update_by_id(id.into_inner(), &module.into_inner()).await?;
+    Ok(HttpResponse::Ok().json(module))
 }
 
+#[delete("/{id}")]
 async fn delete_module(
-    State(pool): State<DbPool>,
-    Path(id): Path<String>,
-) -> Result<Json<ApiResponse>, ApiResponse> {
-    let deleted = ModuleService::delete(&pool, &id)
-        .await
-        .map_err(|e| ApiResponse::error(&e.to_string()))?;
-    if deleted {
-        Ok(Json(ApiResponse::success("Module deleted successfully")))
-    } else {
-        Err(ApiResponse::not_found("Module not found"))
-    }
+    module_service: web::Data<ModuleService>,
+    id: web::Path<u64>,
+) -> Result<impl Responder, AppError> {
+    module_service.delete_by_id(id.into_inner()).await?;
+    Ok(HttpResponse::NoContent().finish())
 }

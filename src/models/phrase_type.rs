@@ -1,13 +1,12 @@
-use chrono::NaiveDateTime;
-use diesel::prelude::*;
+use chrono::{Local, NaiveDateTime};
 use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
 
-use crate::schema::i18n_phrase_types;
+use crate::dtos::phrase_type::{CreatePhraseTypeDto, UpdatePhraseTypeDto};
 
-#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Insertable)]
-#[diesel(table_name = i18n_phrase_types)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct PhraseType {
-    pub id: String,
+    pub id: u32,
     pub name: String,
     pub description: Option<String>,
     pub icon: Option<String>,
@@ -17,17 +16,32 @@ pub struct PhraseType {
     pub upt_at: NaiveDateTime,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct CreatePhraseType {
-    pub name: String,
-    pub description: Option<String>,
-    pub icon: Option<String>,
+impl From<&CreatePhraseTypeDto> for PhraseType {
+    fn from(dto: &CreatePhraseTypeDto) -> Self {
+        PhraseType {
+            id: 0,
+            name: dto.name.clone(),
+            description: dto.description.clone(),
+            icon: dto.icon.clone(),
+            crt_by: "".to_string(),
+            crt_at: Local::now().naive_local(),
+            upt_by: None,
+            upt_at: Local::now().naive_local(),
+        }
+    }
 }
 
-#[derive(Debug, AsChangeset, Deserialize)]
-#[diesel(table_name = i18n_phrase_types)]
-pub struct UpdatePhraseType {
-    pub name: Option<String>,
-    pub description: Option<String>,
-    pub icon: Option<String>,
+impl From<&UpdatePhraseTypeDto> for PhraseType {
+    fn from(dto: &UpdatePhraseTypeDto) -> Self {
+        PhraseType {
+            id: 0,
+            name: dto.name.clone().unwrap_or_default(),
+            description: dto.description.clone(),
+            icon: dto.icon.clone(),
+            crt_by: "".to_string(),
+            crt_at: Local::now().naive_local(),
+            upt_by: None,
+            upt_at: Local::now().naive_local(),
+        }
+    }
 }

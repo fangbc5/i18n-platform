@@ -1,81 +1,3 @@
-# 国际化管理平台设计方案
-
-## 一、项目背景
-
-### 全球化挑战
-随着企业产品全球化进程加速，面临核心挑战：
-- 多语言版本更新滞后，上线周期长达2-4周
-- 各端(Web/iOS/Android/后端)翻译不一致率超30%
-- 术语不统一导致用户困惑，品牌形象受损
-- 缺乏上下文导致翻译准确率不足70%
-- 协作效率低，翻译返工率超40%
-
-### 平台目标
-构建统一国际化管理平台，实现：
-1. 多端词条集中管理
-2. 翻译-审核-发布全流程自动化
-3. 术语统一与上下文可视化
-4. 实时多语言更新分发
-5. 数据驱动的翻译优化
-
-## 二、技术选型
-
-### 前端技术栈
-
-| 模块 | 技术方案 | 优势 |
-|------|----------|------|
-| 框架 | Vue3 + Vite | 响应式开发，极致构建速度 |
-| 状态 | Pinia | 轻量状态管理，TypeScript支持 |
-| UI库 | Naive UI | 灵活组件，主题定制能力强 |
-| 路由 | Vue Router | 动态路由，布局系统 |
-| 请求 | Axios | 拦截器，CSRF防护 |
-| 权限 | Casbin + ABAC | 细粒度动态权限控制 |
-| 可视化 | ECharts | 丰富图表，数据洞察 |
-
-### 后端技术栈
-
-| 模块 | 技术方案 | 优势 |
-|------|----------|------|
-| 框架 | Rust | 极高的性能与速度类型安全 |
-| WEB框架 | Actix-web | 成熟稳定的异步web框架，性能出色 |
-| ORM框架 | SQLx | 类型安全的异步SQL框架，编译时查询验证 |
-| 数据库 | MySQL | 8.0	JSON支持，窗口函数 |
-| 缓存 | Redis | 高频词条缓存，发布队列 |
-| 存储 | MinIO | S3兼容，截图存储 |
-| 任务 | Kafka | 分布式翻译任务队列 |
-| 部署 | Docker+K8s	| 弹性伸缩，滚动更新 |
-
-### 多端SDK
-
-| 平台 | 技术方案 | 特点 |
-|------|----------|------|
-| Web | Vue插件 | 按需加载，<15KB |
-| iOS | Swift库 | 离线优先，<50KB |
-| Android | Kotlin库 | 协程支持，<60KB |
-| Flutter | Dart插件 | 多平台共享，<40KB |
-| 后端 | Rust/Java包 | 多语言支持 |
-
-## 三、前端设计方案
-### 核心模块架构
-![示例图片](./img/core_module_architecture.png)
-
-### 关键页面设计
-1. 翻译工作台（核心界面）
-![示例图片](./img/core_module_architecture.png)
-
-2. 词条管理
-- 多维度筛选（类型/状态/平台）
-- 批量导入/导出（Excel/XLIFF）
-- 词条对比工具（版本差异）
-- 截图关联管理
-
-## 四、数据库设计
-### 核心表关系
-![](./img/table_model.png)
-
-### 表结构
-```
--- 用户表
 CREATE TABLE i18n_users (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '主键id',
     username VARCHAR(50) NOT NULL UNIQUE COMMENT '用户名',
@@ -87,7 +9,7 @@ CREATE TABLE i18n_users (
     last_login DATETIME DEFAULT NULL COMMENT '最后登录时间',
     crt_by VARCHAR(50) NOT NULL COMMENT '创建人',
     crt_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    upt_by VARCHAR(50) NOT NULL COMMENT '更新人',
+    upt_by VARCHAR(50) COMMENT '更新人',
     upt_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     INDEX idx_users_email (email),
     INDEX idx_users_status (status)
@@ -97,6 +19,7 @@ CREATE TABLE i18n_users (
 CREATE TABLE i18n_projects (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '主键id',
     name VARCHAR(100) NOT NULL UNIQUE COMMENT '项目名称',
+    code VARCHAR(50) NOT NULL UNIQUE COMMENT '项目代码',
     description TEXT COMMENT '项目描述',
     base_language CHAR(5) NOT NULL COMMENT '基础语言代码',
     owner_id INT UNSIGNED NOT NULL COMMENT '项目负责人',
@@ -111,6 +34,7 @@ CREATE TABLE i18n_projects (
 
 -- 语言表
 CREATE TABLE i18n_languages (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY COMMENT '主键id',
     code CHAR(5) PRIMARY KEY COMMENT 'ISO 639-1代码',
     name VARCHAR(50) NOT NULL COMMENT '语言名称',
     native_name VARCHAR(50) NOT NULL COMMENT '本地语言名称',
@@ -148,31 +72,6 @@ CREATE TABLE i18n_phrase_types (
     upt_by VARCHAR(50) COMMENT '更新人',
     upt_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- 预填充词条类型数据
-INSERT INTO i18n_phrase_types (name, description, icon, crt_by) VALUES
-('button', '按钮文本', 'mdi-button-pointer', 1),
-('menu', '菜单项', 'mdi-menu', 1),
-('title', '页面标题', 'mdi-format-title', 1),
-('label', '标签文本', 'mdi-label', 1),
-('placeholder', '输入框占位符', 'mdi-form-textbox', 1),
-('tooltip', '工具提示', 'mdi-tooltip-text', 1),
-('message', '普通消息', 'mdi-message-text', 1),
-('error', '错误信息', 'mdi-alert-circle', 1),
-('success', '成功信息', 'mdi-check-circle', 1),
-('warning', '警告信息', 'mdi-alert', 1),
-('notification', '通知消息', 'mdi-bell-ring', 1),
-('text', '普通文本', 'mdi-text', 1),
-('link', '链接文本', 'mdi-link', 1),
-('tab', '选项卡', 'mdi-tab', 1),
-('filter', '筛选条件', 'mdi-filter', 1),
-('column', '表格列名', 'mdi-table-column', 1),
-('validation', '验证消息', 'mdi-shield-alert', 1),
-('email', '邮件内容', 'mdi-email', 1),
-('push', '推送通知', 'mdi-cellphone-message', 1),
-('log', '日志消息', 'mdi-text-box', 1),
-('api', 'API响应消息', 'mdi-api', 1),
-('other', '其他类型', 'mdi-dots-horizontal', 1);
 
 -- 词条表
 CREATE TABLE i18n_phrases (
@@ -241,7 +140,7 @@ CREATE TABLE i18n_translation_history (
     version INT NOT NULL COMMENT '版本号',
     crt_by VARCHAR(50) NOT NULL COMMENT '创建人',
     crt_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-    upt_by VARCHAR(50) NOT NULL COMMENT '修改人',
+    upt_by VARCHAR(50) COMMENT '修改人',
     upt_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '修改时间',
     INDEX idx_history_translation (translation_id),
     INDEX idx_history_crt_by (crt_by)
@@ -290,35 +189,23 @@ CREATE TABLE i18n_project_languages (
     INDEX idx_project_languages_project (project_id),
     INDEX idx_project_languages_language (language)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-```
 
-## 五、业务流程
-### 核心流程：词条生命周期
-![示例图片](./img/phrase_business_flow.png)
-
-### 术语治理流程
-![示例图片](./img/terms_business_flow.png)
-
-## 六、方案价值与问题解决
-### 解决的问题矩阵
-| 问题类别 | 具体问题 | 解决方案 | 效果 |
-|---|---|---|---|
-| 翻译质量 | 上下文缺失 | 截图关联+组件路径 | 准确率↑85%→98% |
-| 翻译质量 | 术语不一致 | 术语库+强制校验 | 一致性↑70%→99% |
-| 翻译质量 | 平台差异大 | 多平台标记+长度限制 | 适配问题↓90% |
-| 协作效率 | 流程碎片化 | 端到端工作流 | 周期↓2周→2天 |
-| 协作效率 | 沟通成本高 | 内置评审系统 | 沟通成本↓60% |
-| 协作效率 | 版本混乱 | 历史版本追踪 | 回滚时间↓1h→1min |
-| 技术实现 | 多端不一致 | 统一SDK | 一致性↑30%→100% |
-| 技术实现 | 更新延迟 | CDN实时分发 | 生效时间↓24h→5min |
-| 技术实现 | 权限粗放 | ABAC模型 | 权限粒度↑字段级 |
-
-### 量化收益
-| 指标 | 改进前 | 改进后 | 提升 |
-|---|---|---|---|
-| 翻译准确率 | 72% | 98% | 0.36 |
-| 术语一致性 | 65% | 99% | 0.52 |
-| 版本发布周期 | 21天 | 2天 | -90% |
-| 翻译返工率 | 42% | 5% | -88% |
-| 多端一致性 | 68% | 100% | 0.47 |
-| 紧急修复时间 | 4小时 | 10分钟 | -96% |
+-- Casbin 规则表
+CREATE TABLE IF NOT EXISTS casbin_rule (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    ptype VARCHAR(12) NOT NULL,
+    v0 VARCHAR(128),
+    v1 VARCHAR(128),
+    v2 VARCHAR(128),
+    v3 VARCHAR(128),
+    v4 VARCHAR(128),
+    v5 VARCHAR(128),
+    crt_by VARCHAR(50) NOT NULL COMMENT '创建人',
+    crt_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    upt_by VARCHAR(50) COMMENT '更新人',
+    upt_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_casbin_rule_ptype (ptype),
+    INDEX idx_casbin_rule_v0 (v0),
+    INDEX idx_casbin_rule_v1 (v1),
+    INDEX idx_casbin_rule_v2 (v2)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

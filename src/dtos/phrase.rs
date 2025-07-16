@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize)]
 pub struct CreatePhraseDto {
-    pub project_id: i32,
+    pub project_id: u64,
     pub key: String,
     pub source_text: String,
     pub context: Option<String>,
@@ -10,8 +10,8 @@ pub struct CreatePhraseDto {
 
 #[derive(Debug, Serialize)]
 pub struct PhraseDto {
-    pub id: i32,
-    pub project_id: i32,
+    pub id: u64,
+    pub project_id: u64,
     pub key: String,
     pub source_text: String,
     pub context: Option<String>,

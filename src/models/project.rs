@@ -1,53 +1,56 @@
-use chrono::NaiveDateTime;
-use diesel::prelude::*;
+use chrono::{Local, NaiveDateTime};
 use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
 
-use crate::schema::i18n_projects;
+use crate::dtos::project::{CreateProjectDto, UpdateProjectDto};
 
-#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Insertable)]
-#[diesel(table_name = i18n_projects)]
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct Project {
-    pub id: String,
+    pub id: u64,
     pub name: String,
+    pub code: String,
     pub description: Option<String>,
     pub base_language: String,
-    pub owner_id: String,
-    pub status: bool,
+    pub owner_id: u64,
+    pub status: i8,
     pub crt_by: String,
     pub crt_at: NaiveDateTime,
     pub upt_by: Option<String>,
     pub upt_at: NaiveDateTime,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct CreateProject {
-    pub name: String,
-    pub description: Option<String>,
-    pub base_language: String,
-    pub owner_id: String,
-    pub status: Option<bool>,
+impl From<&CreateProjectDto> for Project {
+    fn from(dto: &CreateProjectDto) -> Self {
+        Project {
+            id: 0,
+            name: dto.name.clone(),
+            code: dto.code.clone(),
+            description: None,
+            base_language: "en".to_string(),
+            owner_id: 0,
+            status: 0,
+            crt_by: "".to_string(),
+            crt_at: Local::now().naive_local(),
+            upt_by: None,
+            upt_at: Local::now().naive_local(),
+        }
+    }
 }
 
-#[derive(Debug, AsChangeset, Deserialize)]
-#[diesel(table_name = i18n_projects)]
-pub struct UpdateProject {
-    pub name: Option<String>,
-    pub description: Option<String>,
-    pub base_language: Option<String>,
-    pub owner_id: Option<String>,
-    pub status: Option<bool>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Queryable, Insertable)]
-#[diesel(table_name = i18n_project_languages)]
-pub struct ProjectLanguage {
-    pub project_id: String,
-    pub language: String,
-    pub is_default: bool,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct AddProjectLanguage {
-    pub language: String,
-    pub is_default: Option<bool>,
+impl From<&UpdateProjectDto> for Project {
+    fn from(dto: &UpdateProjectDto) -> Self {
+        Project {
+            id: 0,
+            name: dto.name.clone().unwrap_or_default(),
+            code: dto.code.clone().unwrap_or_default(),
+            description: dto.description.clone(),
+            base_language: "en".to_string(),
+            owner_id: 0,
+            status: dto.status.unwrap_or(0),
+            crt_by: "".to_string(),
+            crt_at: Local::now().naive_local(),
+            upt_by: None,
+            upt_at: Local::now().naive_local(),
+        }
+    }
 }

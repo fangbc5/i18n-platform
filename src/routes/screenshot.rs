@@ -1,92 +1,64 @@
 use crate::{
-    dtos::common::ApiResponse,
-    middleware::auth::Claims,
-    models::{CreateScreenshot, UpdateScreenshot},
-    repositories::DbPool,
-    services::ScreenshotService,
+    dtos::screenshot::{CreateScreenshotDto, UpdateScreenshotDto},
+    errors::AppError,
+    middleware::auth::Authentication,
+    services::{screenshot_service::ScreenshotService, BaseService},
 };
-use axum::{
-    extract::{Path, State},
-    routing::{delete, get, post, put},
-    Json, Router,
-};
+use actix_web::{delete, get, post, put, web, HttpResponse, Responder};
 
-pub fn screenshot_routes() -> Router<DbPool> {
-    Router::new()
-        .route("/screenshots", get(list_screenshots))
-        .route("/screenshots", post(create_screenshot))
-        .route("/screenshots/:id", get(get_screenshot))
-        .route("/screenshots/:id", put(update_screenshot))
-        .route("/screenshots/:id", delete(delete_screenshot))
-        .route(
-            "/phrases/:phrase_id/screenshots",
-            get(list_phrase_screenshots),
-        )
+pub fn screenshot_routes(cfg: &mut web::ServiceConfig) {
+    cfg.service(
+        web::scope("")
+            .wrap(Authentication::default())
+            .service(create_screenshot)
+            .service(get_screenshots)
+            .service(get_screenshot)
+            .service(update_screenshot)
+            .service(delete_screenshot),
+    );
 }
 
-async fn list_screenshots(State(pool): State<DbPool>) -> Result<Json<ApiResponse>, ApiResponse> {
-    let screenshots = ScreenshotService::find_all(&pool)
-        .await
-        .map_err(|e| ApiResponse::error(&e.to_string()))?;
-    Ok(Json(ApiResponse::success(screenshots)))
-}
-
-async fn list_phrase_screenshots(
-    State(pool): State<DbPool>,
-    Path(phrase_id): Path<String>,
-) -> Result<Json<ApiResponse>, ApiResponse> {
-    let screenshots = ScreenshotService::find_by_phrase(&pool, &phrase_id)
-        .await
-        .map_err(|e| ApiResponse::error(&e.to_string()))?;
-    Ok(Json(ApiResponse::success(screenshots)))
-}
-
-async fn get_screenshot(
-    State(pool): State<DbPool>,
-    Path(id): Path<String>,
-) -> Result<Json<ApiResponse>, ApiResponse> {
-    let screenshot = ScreenshotService::find_by_id(&pool, &id)
-        .await
-        .map_err(|e| ApiResponse::error(&e.to_string()))?
-        .ok_or_else(|| ApiResponse::not_found("Screenshot not found"))?;
-    Ok(Json(ApiResponse::success(screenshot)))
-}
-
+#[post("")]
 async fn create_screenshot(
-    State(pool): State<DbPool>,
-    claims: Claims,
-    Json(screenshot): Json<CreateScreenshot>,
-) -> Result<Json<ApiResponse>, ApiResponse> {
-    let screenshot = ScreenshotService::create(&pool, &screenshot, &claims.user_id)
-        .await
-        .map_err(|e| ApiResponse::error(&e.to_string()))?;
-    Ok(Json(ApiResponse::success(screenshot)))
+    screenshot_service: web::Data<ScreenshotService>,
+    screenshot: web::Json<CreateScreenshotDto>,
+) -> Result<impl Responder, AppError> {
+    let screenshot = screenshot_service.insert(&screenshot.into_inner()).await?;
+    Ok(HttpResponse::Created().json(screenshot))
 }
 
+#[get("")]
+async fn get_screenshots(
+    screenshot_service: web::Data<ScreenshotService>,
+) -> Result<impl Responder, AppError> {
+    let screenshots = screenshot_service.select_all().await?;
+    Ok(HttpResponse::Ok().json(screenshots))
+}
+
+#[get("/{id}")]
+async fn get_screenshot(
+    screenshot_service: web::Data<ScreenshotService>,
+    id: web::Path<u64>,
+) -> Result<impl Responder, AppError> {
+    let screenshot = screenshot_service.select_by_id(id.into_inner()).await?;
+    Ok(HttpResponse::Ok().json(screenshot))
+}
+
+#[put("/{id}")]
 async fn update_screenshot(
-    State(pool): State<DbPool>,
-    claims: Claims,
-    Path(id): Path<String>,
-    Json(screenshot): Json<UpdateScreenshot>,
-) -> Result<Json<ApiResponse>, ApiResponse> {
-    let screenshot = ScreenshotService::update(&pool, &id, &screenshot, &claims.user_id)
-        .await
-        .map_err(|e| ApiResponse::error(&e.to_string()))?;
-    Ok(Json(ApiResponse::success(screenshot)))
+    screenshot_service: web::Data<ScreenshotService>,
+    id: web::Path<u64>,
+    screenshot: web::Json<UpdateScreenshotDto>,
+) -> Result<impl Responder, AppError> {
+    let screenshot = screenshot_service.update_by_id(id.into_inner(), &screenshot.into_inner()).await?;
+    Ok(HttpResponse::Ok().json(screenshot))
 }
 
+#[delete("/{id}")]
 async fn delete_screenshot(
-    State(pool): State<DbPool>,
-    Path(id): Path<String>,
-) -> Result<Json<ApiResponse>, ApiResponse> {
-    let deleted = ScreenshotService::delete(&pool, &id)
-        .await
-        .map_err(|e| ApiResponse::error(&e.to_string()))?;
-    if deleted {
-        Ok(Json(ApiResponse::success(
-            "Screenshot deleted successfully",
-        )))
-    } else {
-        Err(ApiResponse::not_found("Screenshot not found"))
-    }
+    screenshot_service: web::Data<ScreenshotService>,
+    id: web::Path<u64>,
+) -> Result<impl Responder, AppError> {
+    screenshot_service.delete_by_id(id.into_inner()).await?;
+    Ok(HttpResponse::NoContent().finish())
 }

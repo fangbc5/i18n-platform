@@ -1,39 +1,57 @@
-use crate::{errors::AppError, models::User, schema::users};
-use diesel::{prelude::*, MysqlConnection};
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use sqlx::MySqlPool;
+
+use crate::{errors::AppError, models::user::User};
+
+use super::BaseRepository;
 
 pub struct UserRepository {
-    conn: MysqlConnection,
+    pool: Arc<MySqlPool>,
 }
 
 impl UserRepository {
-    pub fn new(conn: MysqlConnection) -> Self {
-        Self { conn }
+    pub fn new(pool: Arc<MySqlPool>) -> Self {
+        Self { pool }
     }
 
-    pub fn find_by_id(&mut self, user_id: &str) -> Result<User, AppError> {
-        use crate::schema::users::dsl::*;
-        users
-            .find(user_id)
-            .first(&mut self.conn)
-            .map_err(AppError::Database)
+    /// 根据用户名查找用户
+    pub async fn find_by_username(&self, username: &str) -> Result<Option<User>, AppError> {
+        sqlx::query_as::<_, User>(&format!(
+            r#"
+            SELECT * FROM {} WHERE username = ?
+            "#,
+            self.get_table_name()
+        ))
+        .bind(username)
+        .fetch_optional(self.get_pool())
+        .await
+        .map_err(AppError::from)
     }
 
-    pub fn find_by_email(&mut self, user_email: &str) -> Result<Option<User>, AppError> {
-        use crate::schema::users::dsl::*;
-        users
-            .filter(email.eq(user_email))
-            .first::<User>(&mut self.conn)
-            .optional()
-            .map_err(AppError::Database)
+    /// 根据邮箱查找用户
+    pub async fn find_by_email(&self, email: &str) -> Result<Option<User>, AppError> {
+        sqlx::query_as::<_, User>(&format!(
+            r#"
+            SELECT * FROM {} WHERE email = ?
+            "#,
+            self.get_table_name()
+        ))
+        .bind(email)
+        .fetch_optional(self.get_pool())
+        .await
+        .map_err(AppError::from)
+    }
+}
+
+#[async_trait]
+impl BaseRepository<User> for UserRepository {
+    fn get_table_name(&self) -> &str {
+        "i18n_users"
     }
 
-    pub fn create(&mut self, user: &User) -> Result<User, AppError> {
-        use crate::schema::users::dsl::*;
-        diesel::insert_into(users)
-            .values(user)
-            .execute(&mut self.conn)
-            .map_err(AppError::Database)?;
-
-        Ok(user.clone())
+    fn get_pool(&self) -> &MySqlPool {
+        &self.pool
     }
 }
