@@ -1,11 +1,11 @@
-use crate::dtos::user::UpdateUserDto;
+use crate::dtos::user::{CreateUserDto, PageUserRequest, UpdateUserDto, UserVo};
 use crate::errors::AppError;
 use crate::models::user::User;
 use crate::repositories::user_repo::UserRepository;
 use crate::repositories::BaseRepository;
 use crate::services::BaseService;
 use crate::utils::password;
-use chrono::Local;
+use chrono::Utc;
 use sqlx::MySqlPool;
 use std::sync::Arc;
 
@@ -20,19 +20,59 @@ impl UserService {
         }
     }
 
-    pub async fn verify_password(&self, username: &str, password: &str) -> Result<User, AppError> {
+    pub async fn select_by_page(
+        &self,
+        req: &PageUserRequest,
+    ) -> Result<(Vec<UserVo>, i64), AppError> {
+        if let Some(search_key) = &req.search_key {
+            let users = self
+                .repo
+                .select_page_by_key(req.page, req.size, search_key)
+                .await?;
+            let list = users.0.iter().map(|user| UserVo::from(user)).collect();
+            Ok((list, users.1))
+        } else {
+            let users = self.repo.select_by_page(req.page, req.size).await?;
+            let list = users.0.iter().map(|user| UserVo::from(user)).collect();
+            Ok((list, users.1))
+        }
+    }
+
+    pub async fn verify_password(
+        &self,
+        username: &str,
+        password: &str,
+    ) -> Result<Option<User>, AppError> {
         let user = self.repo.find_by_username(username).await?;
 
         match user {
             Some(user) => {
                 if password::verify_password(password, &user.password)? {
-                    Ok(user)
+                    Ok(Some(user))
                 } else {
                     Err(AppError::Unauthorized("Invalid password".into()))
                 }
             }
             None => Err(AppError::NotFound("User not found".into())),
         }
+    }
+
+    pub async fn verify_email_code(
+        &self,
+        email: &str,
+        code: &str,
+    ) -> Result<Option<User>, AppError> {
+        let user = self.repo.find_by_email(email).await?;
+        Ok(user)
+    }
+
+    pub async fn verify_phone_code(
+        &self,
+        phone: &str,
+        code: &str,
+    ) -> Result<Option<User>, AppError> {
+        let user = self.repo.find_by_phone(phone).await?;
+        Ok(user)
     }
 
     pub async fn find_by_username(&self, username: &str) -> Result<Option<User>, AppError> {
@@ -43,39 +83,30 @@ impl UserService {
         self.repo.find_by_email(email).await
     }
 
-    pub async fn create_user(
-        &self,
-        username: &str,
-        password: &str,
-        email: &str,
-    ) -> Result<User, AppError> {
-        // 检查用户名是否已存在
-        if let Some(_) = self.repo.find_by_username(username).await? {
-            return Err(AppError::BadRequest("Username already exists".into()));
-        }
+    pub async fn find_by_phone(&self, phone: &str) -> Result<Option<User>, AppError> {
+        self.repo.find_by_phone(phone).await
+    }
 
-        // 检查邮箱是否已存在
-        if let Some(_) = self.repo.find_by_email(email).await? {
-            return Err(AppError::BadRequest("Email already exists".into()));
-        }
-
-        let hashed_password = password::hash_password(password)?;
-        let now = Local::now().naive_local();
-
+    pub async fn create_user(&self, user: &CreateUserDto) -> Result<User, AppError> {
         let user = User {
-            id: 0, // 数据库自增
-            tenant_id: 0,
-            username: username.to_string(),
-            password: hashed_password,
-            email: email.to_string(),
-            realname: "".to_string(),
+            id: 0,        // 数据库自增
+            tenant_id: 0, // 租户id
+            username: user.username.clone(),
+            password: password::hash_password(&user.password)?,
+            email: user.email.clone(),
+            phone: user.phone.clone(),
+            realname: None,
+            id_card: None,
+            nickname: None,
             avatar: None,
+            gender: None,
+            birthday: None,
             status: 1,
             last_login: None,
-            crt_by: "system".to_string(),
-            crt_at: now,
+            crt_by: "register".to_string(),
+            crt_at: Utc::now(),
             upt_by: None,
-            upt_at: now,
+            upt_at: Utc::now(),
         };
 
         let _id = self.insert(&user).await?;
@@ -95,11 +126,7 @@ impl UserService {
         Ok(user)
     }
 
-    pub async fn update_by_id(
-        &self,
-        id: u64,
-        user: &UpdateUserDto,
-    ) -> Result<bool, AppError> {
+    pub async fn update_by_id(&self, id: u64, user: &UpdateUserDto) -> Result<bool, AppError> {
         let username = user.username.clone();
         let email = user.email.clone();
         let mut user = self
@@ -115,7 +142,7 @@ impl UserService {
                     return Err(AppError::BadRequest("Username already exists".into()));
                 }
             }
-            user.username = username;
+            user.username = Some(username);
         }
 
         if let Some(email) = email {
@@ -125,17 +152,17 @@ impl UserService {
                     return Err(AppError::BadRequest("Email already exists".into()));
                 }
             }
-            user.email = email;
+            user.email = Some(email);
         }
 
-        user.upt_at = Local::now().naive_local();
+        user.upt_at = Utc::now();
         user.upt_by = Some("system".to_string());
         self.repo.update_by_id(id.try_into().unwrap(), &user).await
     }
 
     pub async fn update_password(
         &self,
-        id: i64,
+        id: u64,
         old_password: &str,
         new_password: &str,
     ) -> Result<bool, AppError> {
@@ -151,7 +178,7 @@ impl UserService {
 
         let mut user = user;
         user.password = password::hash_password(new_password)?;
-        user.upt_at = Local::now().naive_local();
+        user.upt_at = Utc::now();
         user.upt_by = Some("system".to_string());
 
         self.repo.update_by_id(id.try_into().unwrap(), &user).await

@@ -6,6 +6,7 @@ use sqlx::MySqlPool;
 use tracing::info;
 
 mod config;
+mod constants;
 mod dtos;
 mod errors;
 mod middleware;
@@ -14,9 +15,18 @@ mod repositories;
 mod routes;
 mod services;
 mod utils;
-mod constants;
 
 use crate::config::SETTINGS;
+use crate::middleware::ErrorHandler;
+use crate::services::language_service::LanguageService;
+use crate::services::module_service::ModuleService;
+use crate::services::phrase_service::PhraseService;
+use crate::services::phrase_type_service::PhraseTypeService;
+use crate::services::project_service::ProjectService;
+use crate::services::screenshot_service::ScreenshotService;
+use crate::services::term_service::TermService;
+use crate::services::translation_service::TranslationService;
+use crate::services::user_service::UserService;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -70,19 +80,39 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .wrap(cors)
             .wrap(Logger::default())
+            .wrap(ErrorHandler::default())
             .app_data(web::Data::new(state.clone()))
+            .app_data(web::Data::new(LanguageService::new(
+                state.mysql_pool.clone(),
+            )))
+            .app_data(web::Data::new(ModuleService::new(state.mysql_pool.clone())))
+            .app_data(web::Data::new(PhraseService::new(state.mysql_pool.clone())))
+            .app_data(web::Data::new(PhraseTypeService::new(
+                state.mysql_pool.clone(),
+            )))
+            .app_data(web::Data::new(ProjectService::new(
+                state.mysql_pool.clone(),
+            )))
+            .app_data(web::Data::new(ScreenshotService::new(
+                state.mysql_pool.clone(),
+            )))
+            .app_data(web::Data::new(TermService::new(state.mysql_pool.clone())))
+            .app_data(web::Data::new(TranslationService::new(
+                state.mysql_pool.clone(),
+            )))
+            .app_data(web::Data::new(UserService::new(state.mysql_pool.clone())))
             // API路由
             .service(
                 web::scope("/api")
                     .service(web::scope("/auth").configure(routes::auth_routes))
-                    .service(web::scope("/users").configure(routes::user_routes))
-                    .service(web::scope("/projects").configure(routes::project_routes))
-                    .service(web::scope("/languages").configure(routes::language_routes))
-                    .service(web::scope("/modules").configure(routes::module_routes))
-                    .service(web::scope("/phrases").configure(routes::phrase_routes))
-                    .service(web::scope("/translations").configure(routes::translation_routes))
-                    .service(web::scope("/terms").configure(routes::term_routes))
-                    .service(web::scope("/screenshots").configure(routes::screenshot_routes)),
+                    .service(web::scope("/user").configure(routes::user_routes))
+                    .service(web::scope("/project").configure(routes::project_routes))
+                    .service(web::scope("/language").configure(routes::language_routes))
+                    .service(web::scope("/module").configure(routes::module_routes))
+                    .service(web::scope("/phrase").configure(routes::phrase_routes))
+                    .service(web::scope("/translation").configure(routes::translation_routes))
+                    .service(web::scope("/term").configure(routes::term_routes))
+                    .service(web::scope("/screenshot").configure(routes::screenshot_routes)),
             )
             // 健康检查
             .route("/health", web::get().to(health_check))

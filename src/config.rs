@@ -46,6 +46,7 @@ pub struct Jwt {
 pub struct Server {
     pub host: String,
     pub port: u16,
+    pub captcha_enabled: bool,
 }
 
 #[derive(Debug)]
@@ -67,6 +68,7 @@ impl Settings {
             server: Server {
                 host: env::var("SERVER_HOST")?,
                 port: env::var("SERVER_PORT")?.parse().unwrap_or(8080),
+                captcha_enabled: env::var("CAPTCHA_ENABLED")?.parse().unwrap_or(true),
             },
             database: Database {
                 url: env::var("DATABASE_URL")?,

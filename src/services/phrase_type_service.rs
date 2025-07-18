@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use std::sync::Arc;
-
+use sqlx::MySqlPool;
 use crate::{
     dtos::phrase_type::{CreatePhraseTypeDto, UpdatePhraseTypeDto}, errors::AppError, models::phrase_type::PhraseType, repositories::{phrase_type_repo::PhraseTypeRepository, BaseRepository}, services::BaseService
 };
@@ -10,8 +10,8 @@ pub struct PhraseTypeService {
 }
 
 impl PhraseTypeService {
-    pub fn new(repository: Arc<PhraseTypeRepository>) -> Self {
-        Self { repository }
+    pub fn new(pool: Arc<MySqlPool>) -> Self {
+        Self { repository: Arc::new(PhraseTypeRepository::new(pool)) }
     }
 
     pub async fn insert(&self, phrase_type: &CreatePhraseTypeDto) -> Result<u64, AppError> {

@@ -1,4 +1,6 @@
 mod base_service;
+pub mod user_service;
+
 pub use base_service::BaseService;
 
 pub mod language_service;
@@ -9,4 +11,3 @@ pub mod project_service;
 pub mod screenshot_service;
 pub mod term_service;
 pub mod translation_service;
-pub mod user_service;

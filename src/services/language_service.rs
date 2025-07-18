@@ -124,7 +124,7 @@ impl LanguageService {
         &self,
         page: u32,
         page_size: u32,
-    ) -> Result<(Vec<LanguageVo>, u64), AppError> {
+    ) -> Result<(Vec<LanguageVo>, i64), AppError> {
         let (languages, total) = self.repo.select_by_page(page, page_size).await?;
         Ok((languages.into_iter().map(|l| l.into()).collect(), total))
     }

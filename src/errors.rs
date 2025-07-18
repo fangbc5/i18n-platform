@@ -18,6 +18,7 @@ pub enum AppError {
     Permission(String),
     Database(String),
     CasbinError(String),
+    Base64Error(String),
 }
 
 impl fmt::Display for AppError {
@@ -35,6 +36,7 @@ impl fmt::Display for AppError {
             AppError::Permission(msg) => msg,
             AppError::Database(msg) => msg,
             AppError::CasbinError(msg) => msg,
+            AppError::Base64Error(msg) => msg,
         };
         write!(f, "{}", message)
     }
@@ -48,29 +50,24 @@ struct ErrorResponse {
 impl ResponseError for AppError {
     fn error_response(&self) -> HttpResponse {
         let (status, message) = match self {
-            AppError::Auth(msg) => (StatusCode::UNAUTHORIZED, msg),
-            AppError::Forbidden(msg) => (StatusCode::FORBIDDEN, msg),
-            AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
-            AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
+            AppError::Auth(msg) => (StatusCode::OK, msg),
+            AppError::Forbidden(msg) => (StatusCode::OK, msg),
+            AppError::BadRequest(msg) => (StatusCode::OK, msg),
+            AppError::NotFound(msg) => (StatusCode::OK, msg),
             AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg),
-            AppError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
-            AppError::SerdeError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
-            AppError::Queue(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
-            AppError::Storage(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
-            AppError::Permission(msg) => (StatusCode::FORBIDDEN, msg),
-            AppError::Database(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
-            AppError::CasbinError(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+            AppError::Internal(msg) => (StatusCode::OK, msg),
+            AppError::SerdeError(msg) => (StatusCode::OK, msg),
+            AppError::Queue(msg) => (StatusCode::OK, msg),
+            AppError::Storage(msg) => (StatusCode::OK, msg),
+            AppError::Permission(msg) => (StatusCode::OK, msg),
+            AppError::Database(msg) => (StatusCode::OK, msg),
+            AppError::CasbinError(msg) => (StatusCode::OK, msg),
+            AppError::Base64Error(msg) => (StatusCode::OK, msg),
         };
 
         HttpResponse::build(status).json(ErrorResponse {
             message: message.to_string(),
         })
-    }
-}
-
-impl From<bcrypt::BcryptError> for AppError {
-    fn from(err: bcrypt::BcryptError) -> Self {
-        AppError::Internal(format!("Bcrypt error: {}", err))
     }
 }
 
@@ -92,6 +89,12 @@ impl From<sqlx::Error> for AppError {
             sqlx::Error::RowNotFound => AppError::NotFound("Record not found".to_string()),
             _ => AppError::Database(format!("Database error: {}", err)),
         }
+    }
+}
+
+impl From<base64::DecodeError> for AppError {
+    fn from(err: base64::DecodeError) -> Self {
+        AppError::Base64Error(format!("Base64 error: {}", err))
     }
 }
 

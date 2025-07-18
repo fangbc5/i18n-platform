@@ -32,7 +32,7 @@ impl ModuleService {
         &self,
         page: u32,
         page_size: u32,
-    ) -> Result<(Vec<Module>, u64), AppError> {
+    ) -> Result<(Vec<Module>, i64), AppError> {
         self.repo.select_by_page(page, page_size).await
     }
 

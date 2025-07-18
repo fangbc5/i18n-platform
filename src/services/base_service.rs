@@ -23,7 +23,7 @@ where
     }
 
     /// 分页获取实体
-    async fn select_by_page(&self, page: u32, page_size: u32) -> Result<(Vec<T>, u64), AppError> {
+    async fn select_by_page(&self, page: u32, page_size: u32) -> Result<(Vec<T>, i64), AppError> {
         self.get_repository().select_by_page(page, page_size).await
     }
 

@@ -39,12 +39,12 @@ pub trait BaseRepository<T> {
         Ok(result)
     }
 
-    async fn select_by_page(&self, page: u32, page_size: u32) -> Result<(Vec<T>, u64), AppError>
+    async fn select_by_page(&self, page: u32, page_size: u32) -> Result<(Vec<T>, i64), AppError>
     where
         T: for<'r> sqlx::FromRow<'r, sqlx::mysql::MySqlRow> + Send + Unpin,
     {
         let query = format!("SELECT COUNT(*) FROM {}", self.get_table_name());
-        let count = sqlx::query_scalar::<_, u64>(&query)
+        let count = sqlx::query_scalar::<_, i64>(&query)
             .fetch_one(self.get_pool())
             .await
             .map_err(|e| AppError::Database(e.to_string()))?;
@@ -101,12 +101,57 @@ pub trait BaseRepository<T> {
     where
         T: serde::Serialize + Send + Sync,
     {
-        let query = format!("INSERT INTO {} SET ?", self.get_table_name());
-        let result = sqlx::query(&query)
-            .bind(serde_json::to_value(entity).unwrap())
+        let value = serde_json::to_value(entity)
+            .map_err(|e| AppError::Database(format!("Failed to serialize entity: {}", e)))?;
+
+        let obj = value
+            .as_object()
+            .ok_or_else(|| AppError::Database("Entity must be an object".into()))?;
+
+        let columns: Vec<&str> = obj.keys().map(String::as_str).collect();
+        let values: Vec<_> = obj.values().collect();
+
+        let placeholders = (0..columns.len())
+            .map(|_| "?")
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        let query = format!(
+            "INSERT INTO {} ({}) VALUES ({})",
+            self.get_table_name(),
+            columns.join(", "),
+            placeholders
+        );
+
+        let mut query_builder = sqlx::query(&query);
+        for value in values {
+            match value {
+                serde_json::Value::Null => query_builder = query_builder.bind(None::<String>),
+                serde_json::Value::Bool(b) => query_builder = query_builder.bind(*b),
+                serde_json::Value::Number(n) => {
+                    if let Some(i) = n.as_i64() {
+                        query_builder = query_builder.bind(i);
+                    } else if let Some(f) = n.as_f64() {
+                        query_builder = query_builder.bind(f);
+                    }
+                }
+                serde_json::Value::String(s) => {
+                    // 尝试解析日期时间字符串
+                    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+                        query_builder = query_builder.bind(dt.naive_utc());
+                    } else {
+                        query_builder = query_builder.bind(s);
+                    }
+                }
+                _ => return Err(AppError::Database("Unsupported value type".into())),
+            }
+        }
+
+        let result = query_builder
             .execute(self.get_pool())
             .await
             .map_err(|e| AppError::Database(e.to_string()))?;
+
         Ok(result.last_insert_id())
     }
 
@@ -143,21 +188,32 @@ pub trait BaseRepository<T> {
     }
 
     async fn delete_by_ids(&self, ids: &[u64]) -> Result<u64, AppError> {
+        if ids.is_empty() {
+            return Ok(0);
+        }
+
+        let placeholders = std::iter::repeat("?")
+            .take(ids.len())
+            .collect::<Vec<_>>()
+            .join(",");
+
         let query = format!(
-            "DELETE FROM {} WHERE {} IN (?)",
+            "DELETE FROM {} WHERE {} IN ({})",
             self.get_table_name(),
-            self.get_id_column_name()
+            self.get_id_column_name(),
+            placeholders
         );
-        let result = sqlx::query(&query)
-            .bind(
-                ids.iter()
-                    .map(|id| id.to_string())
-                    .collect::<Vec<_>>()
-                    .join(","),
-            )
+
+        let mut query_builder = sqlx::query(&query);
+        for id in ids {
+            query_builder = query_builder.bind(*id);
+        }
+
+        let result = query_builder
             .execute(self.get_pool())
             .await
             .map_err(|e| AppError::Database(e.to_string()))?;
+
         Ok(result.rows_affected())
     }
 }
