@@ -104,8 +104,11 @@ pub async fn login(
             return Ok(R::<String>::failure("Cookie Param Captcha is required".into()));
         }
     }
-
-    let token_pair = jwt::generate_token_pair(user.unwrap().id)?;
+    let inner_user = user.unwrap();
+    let token_pair = jwt::generate_token_pair(
+        inner_user.id.clone(),
+        inner_user.username
+    )?;
     Ok(R::ok(LoginResponse::from(token_pair)))
 }
 
@@ -200,7 +203,7 @@ pub async fn refresh_token(
     }
 
     // 生成新的令牌对
-    let token_pair = jwt::generate_token_pair(claims.sub)?;
+    let token_pair = jwt::generate_token_pair(claims.sub, claims.username)?;
     Ok(R::ok(LoginResponse::from(token_pair)))
 }
 

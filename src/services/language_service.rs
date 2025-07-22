@@ -1,12 +1,15 @@
+use chrono::Utc;
+use sqlx::MySqlPool;
 use std::sync::Arc;
 
-use sqlx::MySqlPool;
-
+use crate::dtos::common::PageRequest;
+use crate::dtos::language::{CreateLanguageDto, UpdateLanguageDto};
 use crate::{
-    dtos::language::{CreateLanguageDto, LanguageVo, UpdateLanguageDto},
+    dtos::language::LanguageVo,
     errors::AppError,
     models::language::Language,
-    repositories::{base_repo::BaseRepository, language_repo::LanguageRepository}, services::BaseService,
+    repositories::{base_repo::BaseRepository, language_repo::LanguageRepository},
+    services::BaseService,
 };
 
 pub struct LanguageService {
@@ -20,113 +23,81 @@ impl LanguageService {
         }
     }
 
-    /// 创建语言
-    pub async fn insert(&self, dto: CreateLanguageDto) -> Result<LanguageVo, AppError> {
-        // 检查语言代码是否已存在
-        if let Some(_) = self.repo.find_by_code(&dto.code).await? {
-            return Err(AppError::BadRequest("Language code already exists".into()));
+    /// 分页查询语言列表
+    pub async fn select_by_page(&self, req: &PageRequest) -> Result<(Vec<LanguageVo>, i64), AppError> {
+        if let Some(search_key) = &req.search_key {
+            let languages = self
+                .repo
+                .select_page_by_key(req.page, req.size, search_key)
+                .await?;
+            let list = languages.0.iter().map(|language| LanguageVo::from(language)).collect();
+            Ok((list, languages.1))
+        } else {
+            let languages = self.repo.select_by_page(req.page, req.size).await?;
+            let list = languages.0.iter().map(|language| LanguageVo::from(language)).collect();
+            Ok((list, languages.1))
         }
-
-        // 检查语言名称是否已存在
-        if let Some(_) = self.repo.find_by_name(&dto.name).await? {
-            return Err(AppError::BadRequest("Language name already exists".into()));
+    }
+    
+    /// 插入语言
+    pub async fn insert(&self, language: &CreateLanguageDto) -> Result<u64, AppError> {
+        let code = language.code.clone();
+        let name = language.name.clone();
+        if let Some(_) = self.repo.find_by_code(&code,0).await? {
+            return Err(AppError::BusinessError("repeat language code".into()));
         }
-
-        let now = chrono::Local::now().naive_local();
-
-        // 创建语言
-        let language = Language {
+        if let Some(_) = self.repo.find_by_name(&name,0).await? {
+            return Err(AppError::BusinessError("repeat language name".into()));
+        }
+        let entity = Language {
             id: 0,
-            code: dto.code,
-            name: dto.name,
-            native_name: dto.native_name,
-            is_active: true,
-            crt_at: now,
-            upt_at: now,
-            crt_by: "system".to_string(), // 设置为系统创建
+            code,
+            name,
+            is_active: language.is_active.unwrap_or(false),
+            is_native: language.is_native.unwrap_or(false),
+            crt_by: language.crt_by.clone().unwrap_or("admin".to_owned()),
+            crt_at: Utc::now(),
             upt_by: None,
+            upt_at: Utc::now()
         };
-
-        let id = self.repo.insert(&language).await?;
-        let language = self
-            .repo
-            .select_by_id(id)
-            .await?
-            .ok_or_else(|| AppError::Internal("Failed to get created language".into()))?;
-
-        Ok(language.into())
+        self.repo.insert(&entity).await
     }
-
-    /// 获取语言信息
-    pub async fn select_by_id(&self, id: u64) -> Result<LanguageVo, AppError> {
-        let language = self
-            .repo
-            .select_by_id(id)
-            .await?
-            .ok_or_else(|| AppError::NotFound("Language not found".into()))?;
-        Ok(language.into())
-    }
-
-    /// 更新语言信息
-    pub async fn update_by_id(
-        &self,
-        id: u64,
-        dto: UpdateLanguageDto,
-    ) -> Result<LanguageVo, AppError> {
-        let mut language = self
-            .repo
-            .select_by_id(id)
-            .await?
-            .ok_or_else(|| AppError::NotFound("Language not found".into()))?;
-
-        // 如果要更新语言名称，检查是否已存在
-        if let Some(name) = &dto.name {
-            if let Some(existing) = self.repo.find_by_name(name).await? {
-                if existing.id != id {
-                    return Err(AppError::BadRequest("Language name already exists".into()));
-                }
+    
+    /// 更新语言
+    pub async fn update_by_id(&self, id: u64, language: &UpdateLanguageDto) -> Result<bool, AppError> {
+        let code = language.code.clone();
+        let name = language.name.clone();
+        let is_active = language.is_active.clone();
+        let is_native = language.is_native.clone();
+        let upt_by = language.upt_by.clone();
+        // 查询语言是否存在
+        let exist = self.repo.select_by_id(id).await?;
+        if exist.is_none() {
+            return Err(AppError::BusinessError("language not found".into()));
+        }
+        let mut exist = exist.unwrap();
+        if let Some(code) = code { 
+            if let Some(_) = self.repo.find_by_code(&code,id).await? {
+             return Err(AppError::BusinessError("repeat language code".into())); 
             }
-            language.name = name.clone();
+            exist.code = code;
         }
-
-        // 如果要更新语言代码，检查是否已存在
-        if let Some(code) = &dto.code {
-            if let Some(existing) = self.repo.find_by_code(code).await? {
-                if existing.id != id {
-                    return Err(AppError::BadRequest("Language code already exists".into()));
-                }
+        if let Some(name) = name {
+            if let Some(_) = self.repo.find_by_name(&name,id).await? {
+                return Err(AppError::BusinessError("repeat language name".into()));
             }
-            language.code = code.clone();
+            exist.name = name;
         }
-
-        // 更新其他字段
-        if let Some(native_name) = dto.native_name {
-            language.native_name = native_name;
+        if let Some(is_active) = is_active { 
+            exist.is_active = is_active
         }
-        if let Some(is_active) = dto.is_active {
-            language.is_active = is_active;
+        if let Some(is_native) = is_native {
+            exist.is_active = is_native
         }
-
-        self.repo.update_by_id(id, &language).await?;
-        Ok(language.into())
-    }
-
-    /// 删除语言
-    pub async fn delete_by_id(&self, id: u64) -> Result<(), AppError> {
-        if !self.repo.delete_by_id(id).await? {
-            return Err(AppError::NotFound("Language not found".into()));
+        if let Some(upt_by) = upt_by {
+            exist.upt_by = Some(upt_by)
         }
-        Ok(())
-    }
-
-    /// 获取语言列表
-    pub async fn get_languages(
-        &self,
-        page: u32,
-        page_size: u32,
-    ) -> Result<(Vec<LanguageVo>, i64), AppError> {
-        let (languages, total) = self.repo.select_by_page(page, page_size).await?;
-        Ok((languages.into_iter().map(|l| l.into()).collect(), total))
+        self.repo.update_by_id(id,&exist).await
     }
 }
 

@@ -28,7 +28,7 @@ pub struct User {
     // 生日
     pub birthday: Option<NaiveDateTime>,
     // 状态
-    pub status: i8,
+    pub status: bool,
     // 最后登录时间
     pub last_login: Option<NaiveDateTime>,
     // 创建人

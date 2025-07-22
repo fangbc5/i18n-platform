@@ -9,6 +9,9 @@ pub struct CreateUserDto {
     pub password: String,
     pub email: Option<String>,
     pub phone: Option<String>,
+    pub nickname: Option<String>,
+    pub status: Option<bool>,
+    pub crt_by: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -17,6 +20,8 @@ pub struct RegisterRequest {
     pub email: Option<String>,
     pub phone: Option<String>,
     pub password: String,
+    pub nickname: Option<String>,
+    pub status: Option<bool>,
     pub verify_code: Option<String>,
 }
 
@@ -27,6 +32,9 @@ impl From<&RegisterRequest> for CreateUserDto {
             password: req.password.clone(),
             email: req.email.clone(),
             phone: req.phone.clone(),
+            nickname: req.nickname.clone(),
+            status: req.status.clone(),
+            crt_by: Some("register".to_owned())
         }
     }
 }
@@ -42,8 +50,10 @@ pub struct UpdateUserDto {
     pub username: Option<String>,
     pub email: Option<String>,
     pub realname: Option<String>,
+    pub nickname: Option<String>,
     pub avatar: Option<String>,
-    pub status: Option<i8>,
+    pub status: Option<bool>,
+    pub upt_by: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -66,8 +76,9 @@ pub struct UserVo {
     pub username: Option<String>,
     pub email: Option<String>,
     pub realname: Option<String>,
+    pub nickname: Option<String>,
     pub avatar: Option<String>,
-    pub status: i8,
+    pub status: bool,
     pub last_login: Option<NaiveDateTime>,
     pub crt_at: DateTime<Utc>,
     pub upt_at: DateTime<Utc>,
@@ -80,6 +91,7 @@ impl From<&User> for UserVo {
             username: user.username.clone(),
             email: user.email.clone(),
             realname: user.realname.clone(),
+            nickname: user.nickname.clone(),
             avatar: user.avatar.clone(),
             status: user.status,
             last_login: user.last_login,

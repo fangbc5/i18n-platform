@@ -50,7 +50,7 @@ impl UserService {
                 if password::verify_password(password, &user.password)? {
                     Ok(Some(user))
                 } else {
-                    Err(AppError::Unauthorized("Invalid password".into()))
+                    Err(AppError::Auth("Invalid password".into()))
                 }
             }
             None => Err(AppError::NotFound("User not found".into())),
@@ -97,13 +97,13 @@ impl UserService {
             phone: user.phone.clone(),
             realname: None,
             id_card: None,
-            nickname: None,
+            nickname: user.nickname.clone(),
             avatar: None,
             gender: None,
             birthday: None,
-            status: 1,
+            status: user.status.clone().unwrap_or(true),
             last_login: None,
-            crt_by: "register".to_string(),
+            crt_by: user.crt_by.clone().unwrap_or("register".to_owned()),
             crt_at: Utc::now(),
             upt_by: None,
             upt_at: Utc::now(),
@@ -129,7 +129,9 @@ impl UserService {
     pub async fn update_by_id(&self, id: u64, user: &UpdateUserDto) -> Result<bool, AppError> {
         let username = user.username.clone();
         let email = user.email.clone();
-        let mut user = self
+        let nickname = user.nickname.clone();
+        let status = user.status.clone();
+        let mut exist_user = self
             .repo
             .select_by_id(id.try_into().unwrap())
             .await?
@@ -142,7 +144,7 @@ impl UserService {
                     return Err(AppError::BadRequest("Username already exists".into()));
                 }
             }
-            user.username = Some(username);
+            exist_user.username = Some(username);
         }
 
         if let Some(email) = email {
@@ -152,12 +154,18 @@ impl UserService {
                     return Err(AppError::BadRequest("Email already exists".into()));
                 }
             }
-            user.email = Some(email);
+            exist_user.email = Some(email);
+        }
+        
+        if let Some(nickname) = nickname { 
+            exist_user.nickname = Some(nickname);
+        }
+        if let Some(status) = user.status {
+            exist_user.status = status;
         }
 
-        user.upt_at = Utc::now();
-        user.upt_by = Some("system".to_string());
-        self.repo.update_by_id(id.try_into().unwrap(), &user).await
+        exist_user.upt_by = user.upt_by.clone();
+        self.repo.update_by_id(id.try_into().unwrap(), &exist_user).await
     }
 
     pub async fn update_password(

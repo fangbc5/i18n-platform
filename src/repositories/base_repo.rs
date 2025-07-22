@@ -9,6 +9,14 @@ pub trait BaseRepository<T> {
         "id"
     }
     fn get_table_name(&self) -> &str;
+    
+    async fn select_count(&self, sql: String) -> Result<i64, AppError> {
+        let count = sqlx::query_scalar::<_, i64>(&sql)
+            .fetch_optional(self.get_pool())
+            .await
+            .map_err(|e| AppError::Database(e.to_string()))?.unwrap_or(0);
+        Ok(count)
+    }
 
     async fn select_by_id(&self, id: u64) -> Result<Option<T>, AppError>
     where
@@ -159,17 +167,65 @@ pub trait BaseRepository<T> {
     where
         T: serde::Serialize + Send + Sync,
     {
+        let value = serde_json::to_value(entity)
+            .map_err(|e| AppError::Database(format!("Failed to serialize entity: {}", e)))?;
+
+        let obj = value
+            .as_object()
+            .ok_or_else(|| AppError::Database("Entity must be an object".into()))?;
+
+        // 过滤掉 null 值的字段
+        let mut update_fields = Vec::new();
+        let mut values = Vec::new();
+
+        for (key, value) in obj {
+            if !value.is_null() {
+                update_fields.push(format!("{} = ?", key));
+                values.push(value);
+            }
+        }
+
+        if update_fields.is_empty() {
+            return Ok(false);
+        }
+
         let query = format!(
-            "UPDATE {} SET ? WHERE {} = ?",
+            "UPDATE {} SET {} WHERE {} = ?",
             self.get_table_name(),
+            update_fields.join(", "),
             self.get_id_column_name()
         );
-        let result = sqlx::query(&query)
-            .bind(serde_json::to_value(entity).unwrap())
-            .bind(id)
+
+        let mut query_builder = sqlx::query(&query);
+
+        for value in values {
+            match value {
+                serde_json::Value::Bool(b) => query_builder = query_builder.bind(b),
+                serde_json::Value::Number(n) => {
+                    if let Some(i) = n.as_i64() {
+                        query_builder = query_builder.bind(i);
+                    } else if let Some(f) = n.as_f64() {
+                        query_builder = query_builder.bind(f);
+                    }
+                }
+                serde_json::Value::String(s) => {
+                    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&s) {
+                        query_builder = query_builder.bind(dt.naive_utc());
+                    } else {
+                        query_builder = query_builder.bind(s);
+                    }
+                }
+                _ => return Err(AppError::Database("Unsupported value type".into())),
+            }
+        }
+
+        query_builder = query_builder.bind(id);
+
+        let result = query_builder
             .execute(self.get_pool())
             .await
             .map_err(|e| AppError::Database(e.to_string()))?;
+
         Ok(result.rows_affected() > 0)
     }
 

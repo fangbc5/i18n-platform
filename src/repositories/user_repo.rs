@@ -33,13 +33,9 @@ impl UserRepository {
 
     /// 根据用户名、手机号、邮箱、昵称、真实姓名搜索用户
     pub async fn select_page_by_key(&self,page: u32, size: u32, key: &str) -> Result<(Vec<User>, i64), AppError> {
-        let query_count = format!("SELECT count(*) FROM {} WHERE username LIKE '%{}%' OR email LIKE '%{}%' OR phone LIKE '%{}%' OR realname LIKE '%{}%'", self.get_table_name(), key, key, key, key);
-        let query = format!("SELECT * FROM {} WHERE username LIKE '%{}%' OR email LIKE '%{}%' OR phone LIKE '%{}%' OR realname LIKE '%{}%' LIMIT ?, ?", self.get_table_name(), key, key, key, key);
-        let count = sqlx::query_scalar::<_, i64>(&query_count)
-            .fetch_optional(self.get_pool())
-            .await
-            .map_err(|e| AppError::Database(e.to_string()))?.unwrap_or(0);
-
+        let query_count = format!("SELECT count(*) FROM {} WHERE username LIKE '%{}%' OR email LIKE '%{}%' OR phone LIKE '%{}%' OR realname LIKE '%{}%' OR nickname LIKE '%{}%'", self.get_table_name(), key, key, key, key, key);
+        let query = format!("SELECT * FROM {} WHERE username LIKE '%{}%' OR email LIKE '%{}%' OR phone LIKE '%{}%' OR realname LIKE '%{}%' OR nickname LIKE '%{}%' LIMIT ?, ?", self.get_table_name(), key, key, key, key, key);
+        let count = self.select_count(query_count).await?;
         let users = sqlx::query_as::<_, User>(&query)
             .bind((page - 1) * size)
             .bind(size)

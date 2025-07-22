@@ -17,7 +17,6 @@ mod services;
 mod utils;
 
 use crate::config::SETTINGS;
-use crate::middleware::ErrorHandler;
 use crate::services::language_service::LanguageService;
 use crate::services::module_service::ModuleService;
 use crate::services::phrase_service::PhraseService;
@@ -80,7 +79,6 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .wrap(cors)
             .wrap(Logger::default())
-            .wrap(ErrorHandler::default())
             .app_data(web::Data::new(state.clone()))
             .app_data(web::Data::new(LanguageService::new(
                 state.mysql_pool.clone(),

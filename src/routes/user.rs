@@ -56,8 +56,11 @@ async fn get_user(
 #[post("/add")]
 async fn create_user(
     user_service: web::Data<UserService>,
-    user: web::Json<CreateUserDto>,
+    mut user: web::Json<CreateUserDto>,
+    http_request: HttpRequest
 ) -> Result<impl Responder, AppError> {
+    let claims = jwt::get_claims(&http_request)?;
+    user.crt_by = claims.username;
     let user = user_service.create_user(&user.into_inner()).await?;
     Ok(R::ok(user))
 }
@@ -66,8 +69,11 @@ async fn create_user(
 async fn update_user(
     user_service: web::Data<UserService>,
     id: web::Path<u64>,
-    user: web::Json<UpdateUserDto>,
+    mut user: web::Json<UpdateUserDto>,
+    http_request: HttpRequest
 ) -> Result<impl Responder, AppError> {
+    let claims = jwt::get_claims(&http_request)?;
+    user.upt_by = claims.username;
     let user = user_service
         .update_by_id(id.into_inner(), &user.into_inner())
         .await?;

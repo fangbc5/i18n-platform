@@ -1,3 +1,4 @@
+use crate::dtos::common::PageRequest;
 use crate::{
     dtos::language::{CreateLanguageDto, UpdateLanguageDto},
     errors::AppError,
@@ -6,6 +7,7 @@ use crate::{
     AppState,
 };
 use actix_web::{delete, get, post, put, web, HttpResponse};
+use crate::utils::{PageR, R};
 
 pub fn language_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -19,29 +21,31 @@ pub fn language_routes(cfg: &mut web::ServiceConfig) {
     );
 }
 
-#[post("")]
-async fn create_language(
-    language: web::Json<CreateLanguageDto>,
+#[get("/list")]
+async fn get_languages(
     language_service: web::Data<LanguageService>,
+    req: web::Query<PageRequest>,
 ) -> Result<HttpResponse, AppError> {
-    let language = language_service.insert(language.into_inner()).await?;
-    Ok(HttpResponse::Created().json(language))
+    let languages = language_service.select_by_page(&req).await?;
+    Ok(PageR::ok(languages))
 }
 
-#[get("")]
-async fn get_languages(language_service: web::Data<LanguageService>) -> Result<HttpResponse, AppError> {
-    let languages = language_service.select_all().await?;
-    Ok(HttpResponse::Ok().json(languages))
-}
-
-#[get("/{id}")]
+#[get("/detail/{id}")]
 async fn get_language(
-    state: web::Data<AppState>,
+    language_service: web::Data<LanguageService>,
     id: web::Path<u64>,
 ) -> Result<HttpResponse, AppError> {
-    let service = LanguageService::new(state.mysql_pool.clone());
-    let language = service.select_by_id(id.into_inner()).await?;
-    Ok(HttpResponse::Ok().json(language))
+    let language = language_service.select_by_id(id.into_inner()).await?;
+    Ok(R::ok(language))
+}
+
+#[post("")]
+async fn create_language(
+    language_service: web::Data<LanguageService>,
+    language: web::Json<CreateLanguageDto>,
+) -> Result<HttpResponse, AppError> {
+    let language = language_service.insert(&language.into_inner()).await?;
+    Ok(R::ok(language))
 }
 
 #[put("/{id}")]
@@ -51,17 +55,16 @@ async fn update_language(
     language: web::Json<UpdateLanguageDto>,
 ) -> Result<HttpResponse, AppError> {
     let language = language_service
-        .update_by_id(id.into_inner(), language.into_inner())
+        .update_by_id(id.into_inner(), &language.into_inner())
         .await?;
-    Ok(HttpResponse::Ok().json(language))
+    Ok(R::ok(language))
 }
 
 #[delete("/{id}")]
 async fn delete_language(
-    state: web::Data<AppState>,
+    language_service: web::Data<LanguageService>,
     id: web::Path<u64>,
 ) -> Result<HttpResponse, AppError> {
-    let service = LanguageService::new(state.mysql_pool.clone());
-    service.delete_by_id(id.into_inner()).await?;
-    Ok(HttpResponse::NoContent().finish())
+    let result = language_service.delete_by_id(id.into_inner()).await?;
+    Ok(R::ok(result))
 }

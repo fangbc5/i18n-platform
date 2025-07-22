@@ -7,6 +7,7 @@ use crate::models::project::Project;
 pub struct CreateProjectDto {
     pub name: String,
     pub code: String,
+    pub base_language: String,
     pub description: String,
 }
 

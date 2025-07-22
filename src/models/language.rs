@@ -1,4 +1,4 @@
-use chrono::NaiveDateTime;
+use chrono::{DateTime, NaiveDateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
@@ -7,10 +7,10 @@ pub struct Language {
     pub id: u64,
     pub code: String,
     pub name: String,
-    pub native_name: String,
     pub is_active: bool,
+    pub is_native: bool,
     pub crt_by: String,
-    pub crt_at: NaiveDateTime,
+    pub crt_at: DateTime<Utc>,
     pub upt_by: Option<String>,
-    pub upt_at: NaiveDateTime,
+    pub upt_at: DateTime<Utc>,
 }

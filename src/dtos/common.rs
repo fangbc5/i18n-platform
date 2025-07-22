@@ -13,6 +13,16 @@ pub struct PaginationQuery {
     pub size: Option<i32>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PageRequest {
+    #[serde(default = "crate::utils::default_page")]
+    pub page: u32,
+    #[serde(default = "crate::utils::default_size")]
+    pub size: u32,
+    // 查询key支持编码、名称搜索
+    pub search_key: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct PaginatedResponse<T> {
     pub items: Vec<T>,

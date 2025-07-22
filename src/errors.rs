@@ -19,6 +19,7 @@ pub enum AppError {
     Database(String),
     CasbinError(String),
     Base64Error(String),
+    BusinessError(String),
 }
 
 impl fmt::Display for AppError {
@@ -37,14 +38,16 @@ impl fmt::Display for AppError {
             AppError::Database(msg) => msg,
             AppError::CasbinError(msg) => msg,
             AppError::Base64Error(msg) => msg,
+            AppError::BusinessError(msg) => msg,
         };
         write!(f, "{}", message)
     }
 }
 
 #[derive(Serialize)]
-struct ErrorResponse {
-    message: String,
+struct ErrorResponse<'a> {
+    pub code: i32,
+    pub message: &'a str,
 }
 
 impl ResponseError for AppError {
@@ -63,10 +66,12 @@ impl ResponseError for AppError {
             AppError::Database(msg) => (StatusCode::OK, msg),
             AppError::CasbinError(msg) => (StatusCode::OK, msg),
             AppError::Base64Error(msg) => (StatusCode::OK, msg),
+            AppError::BusinessError(msg) => (StatusCode::OK, msg),
         };
 
         HttpResponse::build(status).json(ErrorResponse {
-            message: message.to_string(),
+            code: 500,
+            message,
         })
     }
 }

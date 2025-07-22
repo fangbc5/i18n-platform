@@ -11,6 +11,7 @@ const REFRESH_TOKEN_EXPIRES_IN: i64 = 25200; // 刷新令牌过期时间（7天�
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claims {
     pub sub: u64, // 用户ID
+    pub username: Option<String>,
     pub exp: i64, // 过期时间
     pub iat: i64, // 签发时间
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -25,7 +26,7 @@ pub struct TokenPair {
 }
 
 impl Claims {
-    pub fn new(user_id: u64, is_refresh: bool) -> Self {
+    pub fn new(user_id: u64, username: Option<String>, is_refresh: bool) -> Self {
         let now = Utc::now().timestamp();
         let expires_in = if is_refresh {
             REFRESH_TOKEN_EXPIRES_IN
@@ -35,6 +36,7 @@ impl Claims {
 
         Self {
             sub: user_id,
+            username,
             iat: now,
             exp: now + expires_in,
             refresh: if is_refresh { Some(true) } else { None },
@@ -42,17 +44,17 @@ impl Claims {
     }
 }
 
-pub fn generate_token_pair(user_id: u64) -> Result<TokenPair, AppError> {
+pub fn generate_token_pair(user_id: u64, username: Option<String>) -> Result<TokenPair, AppError> {
     let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| "your-secret-key".to_string());
     let encoding_key = EncodingKey::from_secret(secret.as_bytes());
 
     // 生成访问令牌
-    let access_claims = Claims::new(user_id, false);
+    let access_claims = Claims::new(user_id, username.clone(), false);
     let access_token = encode(&Header::default(), &access_claims, &encoding_key)
         .map_err(|e| AppError::Unauthorized(format!("Failed to create access token: {}", e)))?;
 
     // 生成刷新令牌
-    let refresh_claims = Claims::new(user_id, true);
+    let refresh_claims = Claims::new(user_id, username, true);
     let refresh_token = encode(&Header::default(), &refresh_claims, &encoding_key)
         .map_err(|e| AppError::Unauthorized(format!("Failed to create refresh token: {}", e)))?;
 
@@ -96,12 +98,13 @@ mod tests {
     fn test_jwt_flow() {
         let claims = Claims {
             sub: 123,
+            username: Some("admin".to_owned()),
             exp: (Utc::now() + ChronoDuration::hours(1)).timestamp(),
             iat: Utc::now().timestamp(),
             refresh: None,
         };
 
-        let token_pair = generate_token_pair(123).unwrap();
+        let token_pair = generate_token_pair(123, Some("admin".to_string())).unwrap();
         let decoded_access = verify_token(&token_pair.access_token).unwrap();
         let decoded_refresh = verify_token(&token_pair.refresh_token).unwrap();
 
@@ -122,7 +125,7 @@ mod tests {
         let start = Instant::now();
 
         for i in 0..iterations {
-            let _ = generate_token_pair(i as u64).unwrap();
+            let _ = generate_token_pair(i as u64, Some("admin".to_string())).unwrap();
         }
 
         let duration = start.elapsed();
@@ -136,7 +139,7 @@ mod tests {
 
     #[test]
     fn test_token_verification_performance() {
-        let token_pair = generate_token_pair(123).unwrap();
+        let token_pair = generate_token_pair(123, Some("admin".to_string())).unwrap();
         let iterations = 1000;
         let start = Instant::now();
 
@@ -168,7 +171,7 @@ mod tests {
                 for j in 0..iterations / concurrency {
                     let gen_start = Instant::now();
                     let token_pair =
-                        generate_token_pair((i * iterations / concurrency + j) as u64).unwrap();
+                        generate_token_pair((i * iterations / concurrency + j) as u64, Some("admin".to_string())).unwrap();
                     let gen_time = gen_start.elapsed();
 
                     let verify_start = Instant::now();
@@ -211,7 +214,7 @@ mod tests {
 
     #[test]
     fn test_token_size() {
-        let token_pair = generate_token_pair(123).unwrap();
+        let token_pair = generate_token_pair(123, Some("admin".to_string())).unwrap();
         println!("\nToken Size Analysis:");
         println!(
             "Access token length: {} bytes",
