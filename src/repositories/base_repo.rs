@@ -8,13 +8,20 @@ pub trait BaseRepository<T> {
     fn get_id_column_name(&self) -> &str {
         "id"
     }
+    fn get_create_time_column_name(&self) -> &str {
+        "crt_at"
+    }
+    fn get_create_by_column_name(&self) -> &str {
+        "crt_by"
+    }
     fn get_table_name(&self) -> &str;
-    
+
     async fn select_count(&self, sql: String) -> Result<i64, AppError> {
         let count = sqlx::query_scalar::<_, i64>(&sql)
             .fetch_optional(self.get_pool())
             .await
-            .map_err(|e| AppError::Database(e.to_string()))?.unwrap_or(0);
+            .map_err(|e| AppError::Database(e.to_string()))?
+            .unwrap_or(0);
         Ok(count)
     }
 
@@ -174,15 +181,17 @@ pub trait BaseRepository<T> {
             .as_object()
             .ok_or_else(|| AppError::Database("Entity must be an object".into()))?;
 
-        // 过滤掉 null 值的字段
+        // 过滤掉 null 值的字段和 id 字段
         let mut update_fields = Vec::new();
         let mut values = Vec::new();
 
         for (key, value) in obj {
-            if !value.is_null() {
-                update_fields.push(format!("{} = ?", key));
-                values.push(value);
+            // 跳过 id 字段和 null 值
+            if value.is_null() || key == self.get_id_column_name() || key == self.get_create_time_column_name() || key == self.get_create_by_column_name() { 
+                continue;
             }
+            update_fields.push(format!("{} = ?", key));
+            values.push(value);
         }
 
         if update_fields.is_empty() {
@@ -219,6 +228,7 @@ pub trait BaseRepository<T> {
             }
         }
 
+        // 使用参数中的 id
         query_builder = query_builder.bind(id);
 
         let result = query_builder

@@ -24,7 +24,7 @@ impl<'a, T: Serialize> R<'a, T> {
     pub fn ok(data: T) -> HttpResponse {
         HttpResponse::Ok().json(Self { code: SUCCESS_CODE, message: SUCCESS_MESSAGE, data: Some(data) })
     }
-    
+
     pub fn ok_with_cookie(data: T, cookie: Cookie) -> HttpResponse {
         let mut response = HttpResponse::Ok();
         response.cookie(cookie);

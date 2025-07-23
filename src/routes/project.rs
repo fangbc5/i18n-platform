@@ -4,7 +4,10 @@ use crate::{
     middleware::auth::Authentication,
     services::{project_service::ProjectService, BaseService},
 };
-use actix_web::{delete, get, post, put, web, HttpResponse};
+use actix_web::{delete, get, post, put, web, HttpRequest, HttpResponse};
+use crate::dtos::common::PageRequest;
+use crate::dtos::project::ProjectVo;
+use crate::utils::{jwt, PageR, R};
 
 pub fn project_routes(cfg: &mut web::ServiceConfig) {
     cfg.service(
@@ -18,40 +21,47 @@ pub fn project_routes(cfg: &mut web::ServiceConfig) {
     );
 }
 
-#[post("")]
-async fn create_project(
-    project_service: web::Data<ProjectService>,
-    project: web::Json<CreateProjectDto>,
-) -> Result<HttpResponse, AppError> {
-    let project = project_service.insert(&project.into_inner()).await?;
-    Ok(HttpResponse::Created().json(project))
-}
-
-#[get("")]
+#[get("/list")]
 async fn get_projects(
     project_service: web::Data<ProjectService>,
+    req: web::Query<PageRequest>
 ) -> Result<HttpResponse, AppError> {
-    let projects = project_service.select_all().await?;
-    Ok(HttpResponse::Ok().json(projects))
+    let projects = project_service.select_by_page(&req).await?;
+    Ok(PageR::ok(projects))
 }
 
-#[get("/{id}")]
+#[get("/detail/{id}")]
 async fn get_project(
     project_service: web::Data<ProjectService>,
     id: web::Path<u64>,
 ) -> Result<HttpResponse, AppError> {
     let project = project_service.select_by_id(id.into_inner()).await?;
-    Ok(HttpResponse::Ok().json(project))
+    Ok(R::ok(project))
+}
+
+#[post("")]
+async fn create_project(
+    project_service: web::Data<ProjectService>,
+    mut project: web::Json<CreateProjectDto>,
+    http_request: HttpRequest
+) -> Result<HttpResponse, AppError> {
+    let claims = jwt::get_claims(&http_request)?;
+    project.crt_by = claims.username;
+    let project = project_service.insert(&project.into_inner()).await?;
+    Ok(R::ok(project))
 }
 
 #[put("/{id}")]
 async fn update_project(
     project_service: web::Data<ProjectService>,
     id: web::Path<u64>,
-    project: web::Json<UpdateProjectDto>,
+    mut project: web::Json<UpdateProjectDto>,
+    http_request: HttpRequest
 ) -> Result<HttpResponse, AppError> {
+    let claims = jwt::get_claims(&http_request)?;
+    project.upt_by = claims.username;
     let project = project_service.update_by_id(id.into_inner(), &project.into_inner()).await?;
-    Ok(HttpResponse::Ok().json(project))
+    Ok(R::ok(project))
 }
 
 #[delete("/{id}")]
@@ -59,6 +69,6 @@ async fn delete_project(
     project_service: web::Data<ProjectService>,
     id: web::Path<u64>,
 ) -> Result<HttpResponse, AppError> {
-    project_service.delete_by_id(id.into_inner()).await?;
-    Ok(HttpResponse::NoContent().finish())
+    let result = project_service.delete_by_id(id.into_inner()).await?;
+    Ok(R::ok(result))
 }
